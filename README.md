@@ -4,7 +4,11 @@ Nightride FM - the synthwaviest radio now inside your terminal, hackerman!!
 
 ![Demo](assets/demo.gif)
 
-Made using golang and bubbletea
+This client establishes a direct uplink to Nightride FM via global packet infrastructure (internet). Audio is streamed, decoded locally and sent directly to your machine's audio output using low-level access through Go's sound libraries.
+
+Built for the command line frontier.
+
+## Fast Installation Methods
 
 ## Build Instructions (It's very fast)
 
@@ -29,6 +33,8 @@ go build -o nightride
 ```
 
 5. Finally, add the binary to your system path.
+
+---
 
 ```
  ..     %@@ .@@@@=   ..

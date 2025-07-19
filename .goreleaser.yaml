@@ -1,0 +1,29 @@
+project_name: nightride
+
+builds:
+  - id: nightride
+    main: ./main.go
+    binary: nightride
+    goos:
+      - windows
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: zip
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - "{{ .Builds }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: babycommando
+    name: nightride-cli
