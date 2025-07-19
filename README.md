@@ -10,7 +10,8 @@ Built for the command line frontier.
 
 ## Installation
 
-1. Download for your system
+1. ### Download for your system
+
    If you can't see your system/distro, consider building the go project. More in the Build Instructions section.
 
    - Windows
