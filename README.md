@@ -8,7 +8,7 @@ This client establishes a direct uplink to Nightride FM via global packet infras
 
 Built for the command line frontier.
 
-## Installation
+## Quick Installation
 
 1. ### Download a prebuild binary from the releases [here](https://github.com/babycommando/nightride-cli/releases/tag/v1.0.0)
 
