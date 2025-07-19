@@ -174,9 +174,9 @@ var (
 /* ─────────────  Audio helpers  ───────────── */
 
 func (m *model) stopCurrent() {
-	speaker.Clear()        // safely removes all playing streams
+	speaker.Clear()
 
-	if m.streamer != nil { // housekeeping
+	if m.streamer != nil {
 			m.streamer.Close()
 			m.streamer = nil
 	}
@@ -202,14 +202,13 @@ func dialAndDecode(url string, tries int) (
 
 			decoded, format, err = mp3.Decode(resp.Body)
 			if err == nil {
-					return decoded, format, resp.Body, nil // success
+					return decoded, format, resp.Body, nil
 			}
 
-			// bad luck: not on a frame boundary → try again
 			resp.Body.Close()
 			time.Sleep(250 * time.Millisecond)
 	}
-	return nil, beep.Format{}, nil, err // give up
+	return nil, beep.Format{}, nil, err
 }
 
 
@@ -237,7 +236,6 @@ func startStreamCmd(idx int) tea.Cmd {
 			return streamHandleMsg{streamer: decoded, body: body}
 	}
 }
-
 
 /* ─────────────  Metadata  ───────────── */
 
