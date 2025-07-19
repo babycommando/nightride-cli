@@ -8,25 +8,27 @@ Made using golang and bubbletea
 
 ## Build Instructions (It's very fast)
 
-Install dependencies:
+1. Make sure you have [Go](https://go.dev/doc/install) installed.
+
+2. Install dependencies:
 
 ```bash
 go mod tidy
 ```
 
-Run locally:
+3. Run locally:
 
 ```bash
 go run main.py
 ```
 
-Build binary:
+4. Build binary:
 
 ```bash
 go build -o nightride
 ```
 
-Finally, add the binary to your system path.
+5. Finally, add the binary to your system path.
 
 ```
  ..     %@@ .@@@@=   ..
