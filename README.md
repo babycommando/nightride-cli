@@ -50,7 +50,9 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-4. Open a fresh terminal and type "nightride" 😎
+4. Open a fresh terminal and type `nightride` 😎
+
+---
 
 ## Build Instructions (It's very fast)
 
@@ -89,9 +91,10 @@ go build -o nightride
 ```
 
 6. ### Add to PATH so you can run nightride from anywhere
-   (instructions are the same for the quick installation)
 
-Done. Now type nightride in any terminal.
+(instructions are the same for the quick installation)
+
+7. ### Open a fresh terminal and type `nightride` 😎
 
 ---
 
