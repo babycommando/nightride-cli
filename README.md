@@ -48,7 +48,7 @@ go build -o nightride
 
 6. Add to PATH (so you can run nightride from anywhere):
 
-**Windows**
+- **Windows**
 
 ```
  Move nightride.exe to a folder like C:\nightride, then:
@@ -56,7 +56,7 @@ go build -o nightride
  Edit PATH, add: C:\nightride
 ```
 
-**Linux**
+- **Linux**
 
 ```bash
 mv nightride ~/.local/bin
@@ -64,7 +64,7 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-**MacOS**
+- **MacOS**
 
 ```bash
 mv nightride ~/.local/bin
