@@ -10,9 +10,9 @@ Built for the command line frontier.
 
 ## Quick Installation
 
-1. ### Download a prebuild binary from the releases [here](https://github.com/babycommando/nightride-cli/releases/tag/v1.0.0)
+1. ### [Download here](https://github.com/babycommando/nightride-cli/releases/tag/v1.0.0) a prebuilt binary from the releases or [build the Go project yourself](https://github.com/babycommando/nightride-cli/tree/main?tab=readme-ov-file#build-instructions-its-very-fast).
 
-   If you can't see your system/distro, consider building the go project. More in the Build Instructions section.
+   If you can't see your system/distro, consider building the go project. More in the Build Instructions section below.
 
    - Windows
    - Linux (Debian/Ubuntu)
