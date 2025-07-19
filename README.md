@@ -25,7 +25,7 @@ sudo pacman -S alsa-lib
 sudo dnf install alsa-lib-devel
 ```
 
-3. Install dependencies:
+3. ### Install dependencies:
 
 ```bash
 go mod tidy
