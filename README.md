@@ -50,7 +50,7 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-4. Open a fresh terminal and type `nightride` 😎
+4. ### Open a fresh terminal and type `nightride` 😎
 
 ---
 
