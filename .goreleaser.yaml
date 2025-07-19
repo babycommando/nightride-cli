@@ -10,12 +10,6 @@ builds:
       - darwin
     goarch:
       - amd64
-      - arm64
-    ignore:
-      - goos: linux
-        goarch: arm64
-      - goos: windows
-        goarch: arm64
 
 archives:
   - format: zip
@@ -30,5 +24,5 @@ checksum:
 
 release:
   github:
-    owner: youruser # ⬅ Replace with your GitHub username
+    owner: babycommando
     name: nightride-cli
