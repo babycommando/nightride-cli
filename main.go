@@ -78,7 +78,7 @@ type (
 type model struct {
 	l          list.Model
 	playingIdx int
-
+	startTime  time.Time
 	streamer beep.StreamSeekCloser
 	respBody io.Closer
 }
@@ -86,18 +86,23 @@ type model struct {
 func newModel() model {
 	items := make([]list.Item, len(stations))
 	for i := range stations {
-		items[i] = stations[i]
+			items[i] = stations[i]
 	}
+
 	delegate := list.NewDefaultDelegate()
 	delegate.Styles.SelectedTitle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF5F87"))
-	delegate.Styles.SelectedDesc = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFB76B"))
+	delegate.Styles.SelectedDesc  = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFB76B"))
 
 	l := list.New(items, delegate, 48, len(items)*2)
 	l.Title = "Nightride  –  ↑/↓ move · Enter play/pause · q quit"
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
 
-	return model{l: l, playingIdx: -1}
+	return model{
+			l:          l,
+			playingIdx: 0,
+			startTime:  time.Now(),
+	}
 }
 
 func fetchAllMetaCmd() tea.Cmd { return func() tea.Msg { return fetchAllMeta() } }
@@ -126,6 +131,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.stopCurrent()
 			m.playingIdx = idx
+			m.startTime  = time.Now()
 			return m, startStreamCmd(idx)
 		case "up", "down", "k", "j":
 			var cmd tea.Cmd
@@ -146,19 +152,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	
 				// 🔁 Update Discord status *only for current station*
 				if i == m.playingIdx {
-					now := time.Now()
+					// now := time.Now()
 					iconKey := key
 					if iconKey == "nightride" {
 						iconKey = "nrfm"
 					}
 	
 					err := client.SetActivity(client.Activity{
-						State:     st.title,
-						Details:   "Listening to " + st.name,
+						State:      st.title,
+						Details:    "Listening to " + st.name,
 						LargeImage: iconKey,
 						LargeText:  st.name,
 						Timestamps: &client.Timestamps{
-							Start: &now,
+								Start: &m.startTime,   // always the same value
 						},
 					})
 					if err != nil {
