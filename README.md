@@ -12,9 +12,9 @@ Built for the command line frontier.
 
 ## Build Instructions (It's very fast)
 
-1. Make sure you have [Go](https://go.dev/doc/install) installed.
+1. ### Make sure you have [Go](https://go.dev/doc/install) installed.
 
-2. If you are on Linux, make sure you have ALSA (otherwise skip this step)
+2. ### If you are on Linux, make sure you have ALSA (otherwise skip this step)
 
 ```bash
 # Ubuntu/Debian
@@ -31,13 +31,13 @@ sudo dnf install alsa-lib-devel
 go mod tidy
 ```
 
-4. Run locally:
+4. ### Run locally:
 
 ```bash
 go run main.py
 ```
 
-5. Build binary:
+5. ### Build binary:
 
 ```bash
 # Windows
@@ -46,7 +46,7 @@ go build -o nightride.exe
 go build -o nightride
 ```
 
-6. Add to PATH (so you can run nightride from anywhere):
+6. ### Add to PATH (so you can run nightride from anywhere):
 
 - **Windows**
 
