@@ -47,10 +47,14 @@ go build -o nightride
 ```
 
 6. Add to PATH (so you can run nightride from anywhere):
-   🪟 **Windows**
-   Move nightride.exe to a folder like C:\nightride, then:
-   Press ⊞ Win → search "Environment Variables"
-   Edit PATH, add: C:\nightride
+
+🪟 **Windows**
+
+```
+ Move nightride.exe to a folder like C:\nightride, then:
+ Press ⊞ Win → search "Environment Variables"
+ Edit PATH, add: C:\nightride
+```
 
 🐧 **Linux**
 
