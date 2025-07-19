@@ -18,6 +18,7 @@ import (
 	"github.com/faiface/beep"
 	"github.com/faiface/beep/mp3"
 	"github.com/faiface/beep/speaker"
+	"github.com/hugolgst/rich-go/client"
 )
 
 var asciiArt = `
@@ -142,6 +143,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				st.title, st.listeners = meta.title, meta.listeners
 				m.l.SetItem(i, st)
 				stations[i].title, stations[i].listeners = st.title, st.listeners
+	
+				// 🔁 Update Discord status *only for current station*
+				if i == m.playingIdx {
+					now := time.Now()
+					iconKey := key
+					if iconKey == "nightride" {
+						iconKey = "nrfm"
+					}
+	
+					err := client.SetActivity(client.Activity{
+						State:     st.title,
+						Details:   "Listening to " + st.name,
+						LargeImage: iconKey,
+						LargeText:  st.name,
+						Timestamps: &client.Timestamps{
+							Start: &now,
+						},
+					})
+					if err != nil {
+						fmt.Println("Discord RPC error:", err)
+					}
+				}
 			}
 		}
 		return m, tickMetaLoop()
@@ -174,6 +197,7 @@ var (
 /* ─────────────  Audio helpers  ───────────── */
 
 func (m *model) stopCurrent() {
+	_ = client.SetActivity(client.Activity{}) // ← clears Discord presence
 	speaker.Clear()
 
 	if m.streamer != nil {
@@ -232,6 +256,27 @@ func startStreamCmd(idx int) tea.Cmd {
 
 			speaker.Clear()
 			speaker.Play(playStream)
+
+			iconKey := stationKey(st.url)                 // e.g. "spacesynth"
+			if iconKey == "nightride" {
+				iconKey = "nrfm" // your custom name for Nightride FM icon
+			}
+
+			now := time.Now()
+			iconKey = stationKey(st.url)
+			if iconKey == "nightride" {
+				iconKey = "nrfm"
+			}
+			
+			_ = client.SetActivity(client.Activity{
+				State:     st.title,
+				Details:   "Listening to " + st.name,
+				LargeImage: iconKey,
+				LargeText:  st.name,
+				Timestamps: &client.Timestamps{
+					Start: &now,
+				},
+			})
 
 			return streamHandleMsg{streamer: decoded, body: body}
 	}
@@ -316,8 +361,14 @@ func tickMetaLoop() tea.Cmd {
 /* ─────────────  main  ───────────── */
 
 func main() {
+	err := client.Login("1396017162425991279")
+	if err != nil {
+		fmt.Println("discord rpc error:", err)
+	}
+
 	if err := tea.NewProgram(newModel(), tea.WithAltScreen()).Start(); err != nil && err != io.EOF {
 		fmt.Println("fatal:", err)
 		os.Exit(1)
 	}
 }
+

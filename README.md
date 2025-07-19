@@ -8,6 +8,12 @@ This client establishes a direct uplink to Nightride FM via global packet infras
 
 Built for the command line frontier.
 
+#### Features:
+
+- All radio stations directly accessible from the terminal
+- No need for extra audio players
+- Support for Discord Rich Presence
+
 ## Quick Installation
 
 1. ### [Download](https://github.com/babycommando/nightride-cli/releases/tag/v1.0.0) a prebuilt binary from the releases or [build the Go project yourself](https://github.com/babycommando/nightride-cli/tree/main?tab=readme-ov-file#build-instructions-its-very-fast).
