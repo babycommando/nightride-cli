@@ -8,7 +8,48 @@ This client establishes a direct uplink to Nightride FM via global packet infras
 
 Built for the command line frontier.
 
-## Fast Installation Methods
+## Installation
+
+1. Download for your system
+   If you can't see your system/distro, consider building the go project. More in the Build Instructions section.
+
+   - Windows
+   - Linux (Debian/Ubuntu)
+
+2. ### If you are on Linux, make sure you have ALSA (otherwise skip this step)
+
+```bash
+# Ubuntu/Debian
+sudo apt install libasound2-dev
+```
+
+3. ### Add to PATH (so you can run "nightride" command from anywhere):
+
+- **Windows**
+
+```
+ Move nightride.exe to a folder like C:\nightride, then:
+ Press ⊞ Win → search "Environment Variables"
+ Edit PATH, add: C:\nightride
+```
+
+- **Linux**
+
+```bash
+mv nightride ~/.local/bin
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+- **MacOS**
+
+```bash
+mv nightride ~/.local/bin
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+4. Open a fresh terminal and type "nightride" 😎
 
 ## Build Instructions (It's very fast)
 
@@ -46,31 +87,8 @@ go build -o nightride.exe
 go build -o nightride
 ```
 
-6. ### Add to PATH (so you can run nightride from anywhere):
-
-- **Windows**
-
-```
- Move nightride.exe to a folder like C:\nightride, then:
- Press ⊞ Win → search "Environment Variables"
- Edit PATH, add: C:\nightride
-```
-
-- **Linux**
-
-```bash
-mv nightride ~/.local/bin
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-- **MacOS**
-
-```bash
-mv nightride ~/.local/bin
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-```
+6. ### Add to PATH so you can run nightride from anywhere
+   (instructions are the same for the quick installation)
 
 Done. Now type nightride in any terminal.
 
