@@ -98,6 +98,18 @@ go build -o nightride
 
 ---
 
+## Contributing
+
+1. Fork this repo
+
+2. Create a new branch (feat/my-feature or fix/bug-xyz)
+
+3. Submit a pull request
+
+4. Play Home - Resonance in the meantime
+
+---
+
 ```
  ..     %@@ .@@@@=   ..
  .  +@= -@@    -@@@#
