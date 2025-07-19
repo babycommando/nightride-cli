@@ -75,7 +75,7 @@ sudo dnf install alsa-lib-devel
 go mod tidy
 ```
 
-4. ### Run locally:
+4. ### Test it:
 
 ```bash
 go run main.py
