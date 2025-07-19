@@ -14,6 +14,17 @@ Built for the command line frontier.
 
 1. Make sure you have [Go](https://go.dev/doc/install) installed.
 
+If you are on Linux, make sure to install ALSA (otherwise skip this step)
+
+```bash
+# Ubuntu/Debian
+sudo apt install libasound2-dev
+# Arch
+sudo pacman -S alsa-lib
+# Fedora
+sudo dnf install alsa-lib-devel
+```
+
 2. Install dependencies:
 
 ```bash
@@ -29,10 +40,35 @@ go run main.py
 4. Build binary:
 
 ```bash
+# Windows
+go build -o nightride.exe
+# Linux/macOS
 go build -o nightride
 ```
 
-5. Finally, add the binary to your system path.
+5. Add to PATH (so you can run nightride from anywhere):
+   🪟 **Windows**
+   Move nightride.exe to a folder like C:\nightride, then:
+   Press ⊞ Win → search "Environment Variables"
+   Edit PATH, add: C:\nightride
+
+🐧 **Linux**
+
+```bash
+mv nightride ~/.local/bin
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+🍎 **MacOS**
+
+```bash
+mv nightride ~/.local/bin
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Done. Now type nightride in any terminal. ✅
 
 ---
 
