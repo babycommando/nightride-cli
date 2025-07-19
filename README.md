@@ -79,7 +79,7 @@ go mod tidy
 4. ### Test it:
 
 ```bash
-go run main.py
+go run main.go
 ```
 
 5. ### Build binary:
