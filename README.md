@@ -38,17 +38,17 @@ sudo apt install libasound2-dev
 - **Linux**
 
 ```bash
-mv nightride ~/.local/bin
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+mkdir -p ~/.nightride && mv nightride ~/.nightride
+chmod +x ~/.nightride/nightride
+echo 'export PATH="$HOME/.nightride:$PATH"' >> ~/.bashrc && source ~/.bashrc
 ```
 
 - **MacOS**
 
 ```bash
-mv nightride ~/.local/bin
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
+mkdir -p ~/.nightride && mv nightride ~/.nightride
+chmod +x ~/.nightride/nightride
+echo 'export PATH="$HOME/.nightride:$PATH"' >> ~/.zshrc && source ~/.zshrc
 ```
 
 4. ### Open a fresh terminal and type `nightride` 😎
