@@ -12,13 +12,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/babycommando/rich-go/client"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/faiface/beep"
 	"github.com/faiface/beep/mp3"
 	"github.com/faiface/beep/speaker"
-	"github.com/hugolgst/rich-go/client"
 )
 
 var asciiArt = `
@@ -63,6 +63,10 @@ var stations = []station{
 func (s station) Title() string       { return s.name }
 func (s station) Description() string { return fmt.Sprintf("%s", s.title) }
 func (s station) FilterValue() string { return s.name }
+func (s station) id() string {
+	key := strings.ToLower(stationKey(s.url))
+	return strings.TrimSuffix(key, ".mp3")
+}
 
 /* ─────────────  Bubble Tea model  ───────────── */
 
@@ -144,7 +148,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case metaAllMsg:
 		for i, itm := range m.l.Items() {
 			st := itm.(station)
-			key := st.url[strings.LastIndex(st.url, "/")+1:]
+			key := st.id() + ".mp3"
 			if meta, ok := msg[key]; ok {
 				st.title, st.listeners = meta.title, meta.listeners
 				m.l.SetItem(i, st)
@@ -153,18 +157,40 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// 🔁 Update Discord status *only for current station*
 				if i == m.playingIdx {
 					// now := time.Now()
-					iconKey := key
+					iconKey := strings.ToLower(stationKey(st.url))      // "Darksynth.mp3" → "darksynth.mp3"
+					iconKey = strings.TrimSuffix(iconKey, ".mp3")       // → "darksynth"
+
 					if iconKey == "nightride" {
 						iconKey = "nrfm"
 					}
 	
+					parts := strings.SplitN(st.title, " – ", 2)
+					artist := ""
+					track := st.title
+					if len(parts) == 2 {
+						artist = parts[0]
+						track = parts[1]
+					}
+
 					err := client.SetActivity(client.Activity{
-						State:      st.title,
+						Type:       2,
 						Details:    "Listening to " + st.name,
+						State:      artist,
 						LargeImage: iconKey,
-						LargeText:  st.name,
+						SmallImage: "nrfm",
+						LargeText:  track,
 						Timestamps: &client.Timestamps{
-								Start: &m.startTime,   // always the same value
+							Start: &m.startTime,
+						},
+						Buttons: []*client.Button{
+							{
+								Label: "Listen to " + st.name,
+								Url:   "https://nightride.fm/?station=" + st.id(),
+							},
+							{
+								Label: "Join the Discord",
+								Url:   "https://discord.gg/synthwave",
+							},
 						},
 					})
 					if err != nil {
@@ -244,47 +270,66 @@ func dialAndDecode(url string, tries int) (
 
 func startStreamCmd(idx int) tea.Cmd {
 	return func() tea.Msg {
-			st := stations[idx]
+		st := stations[idx]
 
-			decoded, format, body, err := dialAndDecode(st.url, 5)
-			if err != nil {
-					return errMsg(err)
-			}
+		decoded, format, body, err := dialAndDecode(st.url, 5)
+		if err != nil {
+			return errMsg(err)
+		}
 
-			speakerOnce.Do(func() {
-					mixerSampleRate = format.SampleRate
-					speaker.Init(mixerSampleRate, mixerSampleRate.N(time.Second/10))
-			})
-			playStream := beep.Streamer(decoded)
-			if format.SampleRate != mixerSampleRate {
-					playStream = beep.Resample(4, format.SampleRate, mixerSampleRate, decoded)
-			}
+		speakerOnce.Do(func() {
+			mixerSampleRate = format.SampleRate
+			speaker.Init(mixerSampleRate, mixerSampleRate.N(time.Second/10))
+		})
 
-			speaker.Clear()
-			speaker.Play(playStream)
+		playStream := beep.Streamer(decoded)
+		if format.SampleRate != mixerSampleRate {
+			playStream = beep.Resample(4, format.SampleRate, mixerSampleRate, decoded)
+		}
 
-			iconKey := stationKey(st.url)                 // e.g. "spacesynth"
-			if iconKey == "nightride" {
-				iconKey = "nrfm" // your custom name for Nightride FM icon
-			}
+		speaker.Clear()
+		speaker.Play(playStream)
 
-			now := time.Now()
-			iconKey = stationKey(st.url)
-			if iconKey == "nightride" {
-				iconKey = "nrfm"
-			}
-			
-			_ = client.SetActivity(client.Activity{
-				State:     st.title,
-				Details:   "Listening to " + st.name,
-				LargeImage: iconKey,
-				LargeText:  st.name,
-				Timestamps: &client.Timestamps{
-					Start: &now,
+		// ↓↓↓ fixed lowercase + nrfm remap
+		iconKey := strings.ToLower(stationKey(st.url))
+		iconKey = strings.TrimSuffix(iconKey, ".mp3")
+		if iconKey == "nightride" {
+			iconKey = "nrfm"
+		}
+
+		// ↓↓↓ split "Artist – Title" if possible
+		parts := strings.SplitN(st.title, " – ", 2)
+		artist := ""
+		track := st.title
+		if len(parts) == 2 {
+			artist = parts[0]
+			track = parts[1]
+		}
+
+		now := time.Now()
+		_ = client.SetActivity(client.Activity{
+			Type:       2,
+			State:      artist,
+			Details:    "Listening to " + st.name,
+			LargeImage: iconKey,
+			SmallImage: "nrfm", // fixed logo
+			LargeText:  track,
+			Timestamps: &client.Timestamps{
+				Start: &now,
+			},
+			Buttons: []*client.Button{
+				{
+					Label: "Listen to " + st.name,
+					Url:   "https://nightride.fm/?station=" + st.id(),
 				},
-			})
+				{
+					Label: "Join the Discord",
+					Url:   "https://discord.gg/synthwave",
+				},
+			},
+		})
 
-			return streamHandleMsg{streamer: decoded, body: body}
+		return streamHandleMsg{streamer: decoded, body: body}
 	}
 }
 
