@@ -85,10 +85,8 @@ go run main.go
 5. ### Build binary:
 
 ```bash
-# Windows
-go build -o nightride.exe
-# Linux/macOS
-go build -o nightride
+go build -o nightride # for mac/linux or
+go build -o nightride.exe # for windows
 ```
 
 6. ### Add to PATH so you can run nightride from anywhere
@@ -98,6 +96,45 @@ go build -o nightride
 7. ### Open a fresh terminal and type `nightride` 😎
 
 ---
+
+## Updating Instructions
+
+In your cloned repo do:
+
+```bash
+git pull # sync the updated repo
+go mod tidy # install the dependencies
+
+# Then build
+go build -o nightride # for mac/linux or
+go build -o nightride.exe # for windows
+```
+
+Then replace the built file where you had it in your path and make it executable:
+
+- **Windows**
+
+```
+ Move nightride.exe to a folder like C:\nightride, then:
+ Press ⊞ Win → search "Environment Variables"
+ Edit PATH, add: C:\nightride
+```
+
+- **Linux**
+
+```bash
+mkdir -p ~/.nightride && mv nightride ~/.nightride
+chmod +x ~/.nightride/nightride
+echo 'export PATH="$HOME/.nightride:$PATH"' >> ~/.bashrc && source ~/.bashrc
+```
+
+- **MacOS**
+
+```bash
+mkdir -p ~/.nightride && mv nightride ~/.nightride
+chmod +x ~/.nightride/nightride
+echo 'export PATH="$HOME/.nightride:$PATH"' >> ~/.zshrc && source ~/.zshrc
+```
 
 ## Contributing
 
