@@ -16,7 +16,7 @@ Built for the command line frontier.
 
 ## Quick Installation
 
-1. ### [Download](https://github.com/babycommando/nightride-cli/releases/tag/v1.0.0) a prebuilt binary from the releases or [build the Go project yourself](https://github.com/babycommando/nightride-cli/tree/main?tab=readme-ov-file#build-instructions-its-very-fast).
+1. ### [Download](https://github.com/babycommando/nightride-cli/releases/tag/v1.0.1) a prebuilt binary from the releases or [build the Go project yourself](https://github.com/babycommando/nightride-cli/tree/main?tab=readme-ov-file#build-instructions-its-very-fast).
 
 2. ### If you are on Linux, make sure you have ALSA (otherwise skip this step)
 
