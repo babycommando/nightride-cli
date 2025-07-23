@@ -37,15 +37,16 @@ type (
 )
 
 type model struct {
-	l          list.Model
-	playingIdx int
-	startTime  time.Time
-	streamer   beep.StreamSeekCloser
-	respBody   io.Closer
-	barHeights []int
-	ampChan    chan []float64 // amplitude data for visualizer
-	easterEgg  bool
-	visPeak    float64
+	l                  list.Model
+	playingIdx         int
+	startTime          time.Time
+	streamer           beep.StreamSeekCloser
+	respBody           io.Closer
+	barHeights         []int
+	ampChan            chan []float64 // amplitude data for visualizer
+	easterEgg          bool
+	visPeak            float64
+	isHorizontalLayout bool // toggle field for layout
 }
 
 // updateSelectorColors updates the list delegate colors based on the station's color scheme
@@ -85,6 +86,7 @@ func max(a, b int) int {
 	return b
 }
 
+/* ─────────────  Bubble Tea setup  ───────────── */
 func newModel() model {
 	items := make([]list.Item, len(stations))
 	for i := range stations {
@@ -94,14 +96,14 @@ func newModel() model {
 	l := list.New(items, delegate, 48, len(items)*2)
 	l.Title = "↑/↓ Select Station · Enter ⏯ · Q quit"
 	// Hide Bubble Tea list component
-	l.Styles.Title = l.Styles.Title.Copy().
-		UnsetBackground().
-		MarginTop(2).
-		Margin(0, 0).
-		Padding(0, 0)
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
-	l.SetShowHelp(false) // Add this line to hide the help text
+	l.Styles.Title = l.Styles.Title.Copy(). // Need to maintain this even if not used for the background color removal!!!
+						UnsetBackground(). //	 Remove background color
+						MarginTop(2).      // Add top margin
+						Margin(0, 0).      // Remove side margins
+						Padding(0, 0)      // Remove padding
+	l.SetShowStatusBar(false)    // Hide the status bar
+	l.SetFilteringEnabled(false) // Disable filtering
+	l.SetShowHelp(false)         // Add this line to hide the help text
 
 	m := model{
 		l:          l,
@@ -142,6 +144,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "l":
+			m.isHorizontalLayout = !m.isHorizontalLayout // toggle layout
+			return m, nil
 		case "z":
 			m.easterEgg = !m.easterEgg // toggle easter egg mode
 			return m, nil
@@ -317,20 +322,22 @@ func (m model) View() string {
 			currentIconKey = "nrfm"
 		}
 
-		// Get colors for the playing station
-		// colors, exists := StationColors[currentIconKey]
-		// if !exists {
-		//     // Default to the original pink-purple gradient
-		//     colors = []string{"#ff386f", "#7d3cff"}
-		// }
-
 		header = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD75F")).
 			Render("▶ " + item.name + "\n  " + item.title)
 	}
 
 	visual := RenderVisualizedASCII(m.barHeights, currentIconKey)
 
-	return lipgloss.JoinVertical(lipgloss.Left, visual, header, m.l.View())
+	// Add layout toggle info to the title
+	if m.isHorizontalLayout {
+		// Horizontal layout: ASCII art on left, controls on right
+		rightPanel := lipgloss.JoinVertical(lipgloss.Left, header, m.l.View())
+		return lipgloss.JoinHorizontal(lipgloss.Top, visual, rightPanel)
+	} else {
+		// Vertical layout: everything stacked vertically (original layout)
+		// ASCII art on top, controls below
+		return lipgloss.JoinVertical(lipgloss.Left, visual, header, m.l.View())
+	}
 }
 
 // ─────────────  global audio state  ─────────────
@@ -530,6 +537,9 @@ func visualizerTick() tea.Cmd {
 /* ─────────────  main  ───────────── */
 
 func main() {
+	// Set the process title
+	os.Args[0] = "Nightride FM"
+
 	err := client.Login("1396017162425991279")
 	if err != nil {
 		fmt.Println("discord rpc error:", err)
