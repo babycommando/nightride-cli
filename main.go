@@ -18,7 +18,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/faiface/beep"
-	"github.com/faiface/beep/effects"
 	"github.com/faiface/beep/mp3"
 	"github.com/faiface/beep/speaker"
 )
@@ -26,11 +25,14 @@ import (
 /* ─────────────  Bubble Tea model  ───────────── */
 
 type (
-	metaAllMsg      = map[string]struct{ title string; listeners int }
+	metaAllMsg = map[string]struct {
+		title     string
+		listeners int
+	}
 	errMsg          error
 	streamHandleMsg struct {
-		streamer   beep.StreamSeekCloser
-		body       io.Closer
+		streamer beep.StreamSeekCloser
+		body     io.Closer
 	}
 )
 
@@ -70,8 +72,18 @@ func (m *model) updateSelectorColors(iconKey string) {
 	m.l.SetDelegate(delegate)
 }
 
-func min(a, b int) int { if a < b { return a }; return b }
-func max(a, b int) int { if a > b { return a }; return b }
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
 
 func newModel() model {
 	items := make([]list.Item, len(stations))
@@ -81,6 +93,7 @@ func newModel() model {
 	delegate := list.NewDefaultDelegate()
 	l := list.New(items, delegate, 48, len(items)*2)
 	l.Title = "↑/↓ Select Station · Enter ⏯ · Q quit"
+	// Hide Bubble Tea list component
 	l.Styles.Title = l.Styles.Title.Copy().
 		UnsetBackground().
 		MarginTop(2).
@@ -88,16 +101,17 @@ func newModel() model {
 		Padding(0, 0)
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
-	
+	l.SetShowHelp(false) // Add this line to hide the help text
+
 	m := model{
 		l:          l,
 		playingIdx: 0,
 		startTime:  time.Now(),
 		barHeights: make([]int, asciiArtWidth()),
 		ampChan:    make(chan []float64, 1),
-		visPeak:    0.25, 
+		visPeak:    0.25,
 	}
-	
+
 	// Set initial selector colors for the first station
 	if len(stations) > 0 {
 		st := stations[0]
@@ -108,31 +122,18 @@ func newModel() model {
 		}
 		m.updateSelectorColors(iconKey)
 	}
-	
+
 	return m
 }
 
 func fetchAllMetaCmd() tea.Cmd { return func() tea.Msg { return fetchAllMeta() } }
 
-func visualizerLoop() tea.Cmd {
-    return func() tea.Msg {
-        go func() {
-            ticker := time.NewTicker(33 * time.Millisecond)
-            for range ticker.C {
-                tea.Println("visualizerTick")   // push straight into Bubble Tea
-            }
-        }()
-        return nil
-    }
-}
-
 func (m model) Init() tea.Cmd {
-    return tea.Batch(
-        startStreamCmd(0, m.ampChan),
-        fetchAllMetaCmd(),
-        visualizerLoop(),
-        visualizerTick(),
-    )
+	return tea.Batch(
+		startStreamCmd(0, m.ampChan),
+		fetchAllMetaCmd(),
+		visualizerTick(),
+	)
 }
 
 const globalGain = 0.55
@@ -143,7 +144,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "z":
 			m.easterEgg = !m.easterEgg // toggle easter egg mode
-			return m, nil	
+			return m, nil
 		case "q", "ctrl+c":
 			m.stopCurrent()
 			return m, tea.Quit
@@ -156,16 +157,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.stopCurrent()
 			m.playingIdx = idx
-			m.startTime  = time.Now()
+			m.startTime = time.Now()
 			return m, startStreamCmd(idx, m.ampChan)
-		// case "left":
-		// 	Volume down
-		// 	m.volumeCtrl.VolumeDown()
-		// 	return m, nil
-		// case "right":
-		// 	Volume up
-		// 	m.volumeCtrl.VolumeUp()
-		// 	return m, nil
 		case "up", "down", "k", "j":
 			var cmd tea.Cmd
 			m.l, cmd = m.l.Update(msg)
@@ -193,12 +186,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				st.title, st.listeners = meta.title, meta.listeners
 				m.l.SetItem(i, st)
 				stations[i].title, stations[i].listeners = st.title, st.listeners
-	
+
 				// 🔁 Update Discord status *only for current station*
 				if i == m.playingIdx {
 					// now := time.Now()
-					iconKey := strings.ToLower(stationKey(st.url))      // "Darksynth.mp3" → "darksynth.mp3"
-					iconKey = strings.TrimSuffix(iconKey, ".mp3")       // → "darksynth"
+					iconKey := strings.ToLower(stationKey(st.url)) // "Darksynth.mp3" → "darksynth.mp3"
+					iconKey = strings.TrimSuffix(iconKey, ".mp3")  // → "darksynth"
 					if iconKey == "nightride" {
 						iconKey = "nrfm"
 					}
@@ -242,53 +235,62 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errMsg:
 		fmt.Println("audio error:", msg)
 		return m, nil
-case string:
-    if msg == "visualizerTick" {
-        select {
-        case amps := <-m.ampChan:
-            height := asciiArtHeight()
+	case string:
+		if msg == "visualizerTick" {
+			select {
+			case amps := <-m.ampChan:
+				height := asciiArtHeight()
 
-            // ── stable gain via slow‑decaying peak envelope ──
-            frameMax := 0.0
-            for _, a := range amps {
-                if a > frameMax { frameMax = a }
-            }
-            const peakDecay = 0.93          // slower → smoother gain
-            m.visPeak *= peakDecay
-            if frameMax > m.visPeak { m.visPeak = frameMax }
-            if m.visPeak < 1e-6 { m.visPeak = 1e-6 }
+				// ── stable gain via slow‑decaying peak envelope ──
+				frameMax := 0.0
+				for _, a := range amps {
+					if a > frameMax {
+						frameMax = a
+					}
+				}
+				const peakDecay = 0.93 // slower → smoother gain
+				m.visPeak *= peakDecay
+				if frameMax > m.visPeak {
+					m.visPeak = frameMax
+				}
+				if m.visPeak < 1e-6 {
+					m.visPeak = 1e-6
+				}
 
-						gain := globalGain * float64(height-1) / m.visPeak
+				gain := globalGain * float64(height-1) / m.visPeak
 
-            // ── column processing ──
-						const (
-								gamma = 0.85 // closer to raw RMS, punchier transients
-								atk   = 0.9  // bars shoot up almost instantly
-								dec   = 0.30 // bars fall a bit quicker
-						)
+				// ── column processing ──
+				const (
+					gamma = 0.85 // closer to raw RMS, punchier transients
+					atk   = 0.9  // bars shoot up almost instantly
+					dec   = 0.30 // bars fall a bit quicker
+				)
 
-            for i := range m.barHeights {
-                shaped  := math.Pow(amps[i], gamma) * gain
-                current := float64(m.barHeights[i])
-                a := dec
-                if shaped > current { a = atk }
-                m.barHeights[i] = int(a*shaped + (1-a)*current)
-            }
+				for i := range m.barHeights {
+					shaped := math.Pow(amps[i], gamma) * gain
+					current := float64(m.barHeights[i])
+					a := dec
+					if shaped > current {
+						a = atk
+					}
+					m.barHeights[i] = int(a*shaped + (1-a)*current)
+				}
 
-            // ── light 3‑tap blur ──
-            prev := m.barHeights
-            blur := make([]int, len(prev))
-            for i := range prev {
-                l := prev[max(i-1,0)]
-                m2:= prev[i]
-                r := prev[min(i+1,len(prev)-1)]
-                blur[i] = (l + m2*2 + r) / 4
-            }
-            m.barHeights = blur
+				// ── light 3‑tap blur ──
+				prev := m.barHeights
+				blur := make([]int, len(prev))
+				for i := range prev {
+					l := prev[max(i-1, 0)]
+					m2 := prev[i]
+					r := prev[min(i+1, len(prev)-1)]
+					blur[i] = (l + m2*2 + r) / 4
+				}
+				m.barHeights = blur
 
-        default: /* no new amplitudes */ }
-        return m, visualizerTick()
-    }
+			default: /* no new amplitudes */
+			}
+			return m, visualizerTick()
+		}
 	}
 
 	var cmd tea.Cmd
@@ -297,44 +299,44 @@ case string:
 }
 
 func (m model) View() string {
-		if m.easterEgg {
-			return lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#ff386f")).
-				Render(EasterEgg)
+	if m.easterEgg {
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#ff386f")).
+			Render(EasterEgg)
+	}
+	header := "▷ Paused\n  Press \"Enter ↵\" to play"
+	var currentIconKey string = "nrfm" // default for paused state
+
+	if m.playingIdx != -1 {
+		item := m.l.Items()[m.playingIdx].(station)
+
+		// Get the icon key for the current station
+		currentIconKey = strings.ToLower(stationKey(item.url))
+		currentIconKey = strings.TrimSuffix(currentIconKey, ".mp3")
+		if currentIconKey == "nightride" {
+			currentIconKey = "nrfm"
 		}
-    header := "⏸ Paused"
-    var currentIconKey string = "nrfm" // default for paused state
-    
-    if m.playingIdx != -1 {
-        item := m.l.Items()[m.playingIdx].(station)
-        
-        // Get the icon key for the current station
-        currentIconKey = strings.ToLower(stationKey(item.url))
-        currentIconKey = strings.TrimSuffix(currentIconKey, ".mp3")
-        if currentIconKey == "nightride" {
-            currentIconKey = "nrfm"
-        }
-        
-        // Get colors for the playing station
-        // colors, exists := StationColors[currentIconKey]
-        // if !exists {
-        //     // Default to the original pink-purple gradient
-        //     colors = []string{"#ff386f", "#7d3cff"}
-        // }
-        
-        header = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD75F")).
-            Render("▶ " + item.name + "\n  " + item.title)
-    }
 
-    visual := RenderVisualizedASCII(m.barHeights, currentIconKey)
+		// Get colors for the playing station
+		// colors, exists := StationColors[currentIconKey]
+		// if !exists {
+		//     // Default to the original pink-purple gradient
+		//     colors = []string{"#ff386f", "#7d3cff"}
+		// }
 
-    return lipgloss.JoinVertical(lipgloss.Left, visual, header, m.l.View())
+		header = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD75F")).
+			Render("▶ " + item.name + "\n  " + item.title)
+	}
+
+	visual := RenderVisualizedASCII(m.barHeights, currentIconKey)
+
+	return lipgloss.JoinVertical(lipgloss.Left, visual, header, m.l.View())
 }
 
 // ─────────────  global audio state  ─────────────
 var (
-	speakerOnce       sync.Once
-	mixerSampleRate   beep.SampleRate
+	speakerOnce     sync.Once
+	mixerSampleRate beep.SampleRate
 )
 
 /* ─────────────  Audio helpers  ───────────── */
@@ -344,116 +346,107 @@ func (m *model) stopCurrent() {
 	speaker.Clear()
 
 	if m.streamer != nil {
-			m.streamer.Close()
-			m.streamer = nil
+		m.streamer.Close()
+		m.streamer = nil
 	}
 	if m.respBody != nil {
-			m.respBody.Close()
-			m.respBody = nil
+		m.respBody.Close()
+		m.respBody = nil
 	}
 }
 
 func dialAndDecode(url string, tries int) (
 	decoded beep.StreamSeekCloser,
-	format  beep.Format,
-	body    io.ReadCloser,
-	err     error,
+	format beep.Format,
+	body io.ReadCloser,
+	err error,
 ) {
 	for i := 0; i < tries; i++ {
-			var resp *http.Response
-			resp, err = http.Get(url)
-			if err != nil {
-					time.Sleep(250 * time.Millisecond)
-					continue
-			}
-
-			decoded, format, err = mp3.Decode(resp.Body)
-			if err == nil {
-					return decoded, format, resp.Body, nil
-			}
-
-			resp.Body.Close()
+		var resp *http.Response
+		resp, err = http.Get(url)
+		if err != nil {
 			time.Sleep(250 * time.Millisecond)
+			continue
+		}
+
+		decoded, format, err = mp3.Decode(resp.Body)
+		if err == nil {
+			return decoded, format, resp.Body, nil
+		}
+
+		resp.Body.Close()
+		time.Sleep(250 * time.Millisecond)
 	}
 	return nil, beep.Format{}, nil, err
 }
 
-
 func startStreamCmd(idx int, ampChan chan []float64) tea.Cmd {
-    return func() tea.Msg {
-        st := stations[idx]
-        decoded, format, body, err := dialAndDecode(st.url, 5)
-        if err != nil {
-            return errMsg(err)
-        }
-        speakerOnce.Do(func() {
-            mixerSampleRate = format.SampleRate
-            speaker.Init(mixerSampleRate, mixerSampleRate.N(time.Second/10))
-        })
+	return func() tea.Msg {
+		st := stations[idx]
+		decoded, format, body, err := dialAndDecode(st.url, 5)
+		if err != nil {
+			return errMsg(err)
+		}
+		speakerOnce.Do(func() {
+			mixerSampleRate = format.SampleRate
+			speaker.Init(mixerSampleRate, mixerSampleRate.N(time.Second/10))
+		})
 
-        vs := &visualizerStreamer{
-            Streamer: beep.Streamer(decoded),
-            ampChan:  ampChan,
-            width:    asciiArtWidth(),
-        }
+		vs := &visualizerStreamer{
+			Streamer: beep.Streamer(decoded),
+			ampChan:  ampChan,
+			width:    asciiArtWidth(),
+		}
 
-        playStream := beep.Streamer(vs)
-        if format.SampleRate != mixerSampleRate {
-            playStream = beep.Resample(4, format.SampleRate, mixerSampleRate, vs)
-        }
+		playStream := beep.Streamer(vs)
+		if format.SampleRate != mixerSampleRate {
+			playStream = beep.Resample(4, format.SampleRate, mixerSampleRate, vs)
+		}
 
-        // Add volume control - start with default volume, will be updated by model
-        volumeCtrl := &effects.Volume{
-            Streamer: playStream,
-            Base:     2,
-            Volume:   1.0, // will be updated by the model's current volume
-            Silent:   false,
-        }
+		speaker.Clear()
+		speaker.Play(playStream)
 
-        speaker.Clear()
-				speaker.Play(volumeCtrl)
+		// ↓↓↓ fixed lowercase + nrfm remap
+		iconKey := strings.ToLower(stationKey(st.url))
+		iconKey = strings.TrimSuffix(iconKey, ".mp3")
+		if iconKey == "nightride" {
+			iconKey = "nrfm"
+		}
 
-	// ↓↓↓ fixed lowercase + nrfm remap
-	iconKey := strings.ToLower(stationKey(st.url))
-	iconKey = strings.TrimSuffix(iconKey, ".mp3")
-	if iconKey == "nightride" {
-		iconKey = "nrfm"
-	}
+		// ↓↓↓ split "Artist – Title" if possible
+		parts := strings.SplitN(st.title, " – ", 2)
+		artist := ""
+		track := st.title
+		if len(parts) == 2 {
+			artist = parts[0]
+			track = parts[1]
+		}
 
-	// ↓↓↓ split "Artist – Title" if possible
-	parts := strings.SplitN(st.title, " – ", 2)
-	artist := ""
-	track := st.title
-	if len(parts) == 2 {
-		artist = parts[0]
-		track = parts[1]
-	}
-
-	now := time.Now()
-	_ = client.SetActivity(client.Activity{
-		Type:       2,
-		State:      artist,
-		Details:    "Listening to " + st.name,
-		LargeImage: iconKey,
-		SmallImage: "nrfm", // fixed logo
-		LargeText:  track,
-		Timestamps: &client.Timestamps{
-			Start: &now,
-		},
-		Buttons: []*client.Button{
-			{
-				Label: "Listen to " + st.name,
-				Url:   "https://nightride.fm/?station=" + st.id(),
+		now := time.Now()
+		_ = client.SetActivity(client.Activity{
+			Type:       2,
+			State:      artist,
+			Details:    "Listening to " + st.name,
+			LargeImage: iconKey,
+			SmallImage: "nrfm", // fixed logo
+			LargeText:  track,
+			Timestamps: &client.Timestamps{
+				Start: &now,
 			},
-			{
-				Label: "Join the Discord",
-				Url:   "https://discord.gg/synthwave",
+			Buttons: []*client.Button{
+				{
+					Label: "Listen to " + st.name,
+					Url:   "https://nightride.fm/?station=" + st.id(),
+				},
+				{
+					Label: "Join the Discord",
+					Url:   "https://discord.gg/synthwave",
+				},
 			},
-		},
-	})
+		})
 
-	return streamHandleMsg{streamer: decoded, body: body}
-    }
+		return streamHandleMsg{streamer: decoded, body: body}
+	}
 }
 
 /* ─────────────  Metadata  ───────────── */
@@ -476,8 +469,8 @@ func fetchAllMeta() tea.Msg {
 	}
 	defer resp.Body.Close()
 
-	meta := make(metaAllMsg)                         
-	want := len(stations)                           
+	meta := make(metaAllMsg)
+	want := len(stations)
 	scanner := bufio.NewScanner(resp.Body)
 
 	for scanner.Scan() {
@@ -504,9 +497,9 @@ func fetchAllMeta() tea.Msg {
 			}
 			meta[key] = struct {
 				title     string
-				listeners int
+				listeners int //	not used
 			}{
-				title: fmt.Sprintf("%s – %s", np.Artist, np.Title),
+				title:     fmt.Sprintf("%s – %s", np.Artist, np.Title),
 				listeners: 0,
 			}
 		}
@@ -529,9 +522,9 @@ func tickMetaLoop() tea.Cmd {
 }
 
 func visualizerTick() tea.Cmd {
-    return tea.Tick(33*time.Millisecond, func(time.Time) tea.Msg {
-        return "visualizerTick"
-    })
+	return tea.Tick(33*time.Millisecond, func(time.Time) tea.Msg {
+		return "visualizerTick"
+	})
 }
 
 /* ─────────────  main  ───────────── */
@@ -549,39 +542,42 @@ func main() {
 }
 
 type visualizerStreamer struct {
-    beep.Streamer
-    ampChan chan []float64
-    width   int
+	beep.Streamer
+	ampChan chan []float64
+	width   int
 }
 
 func (vs *visualizerStreamer) Stream(samples [][2]float64) (int, bool) {
-    n, ok := vs.Streamer.Stream(samples)
+	n, ok := vs.Streamer.Stream(samples)
 
-    cols := vs.width
-    amps := make([]float64, cols)
+	cols := vs.width
+	amps := make([]float64, cols)
 
-    // bucket == how many samples belong to ONE bar
-    bucket := n / cols
-    if bucket == 0 { bucket = 1 }
+	// bucket == how many samples belong to ONE bar
+	bucket := n / cols
+	if bucket == 0 {
+		bucket = 1
+	}
 
-    for c := 0; c < cols; c++ {
-        start := c * bucket
-        end   := start + bucket
-        if end > n { end = n }
+	for c := 0; c < cols; c++ {
+		start := c * bucket
+		end := start + bucket
+		if end > n {
+			end = n
+		}
 
-        var sumSq float64
-        for i := start; i < end; i++ {
-            s := (samples[i][0] + samples[i][1]) * 0.5 // mono
-            sumSq += s * s                             // power
-        }
-        rms := math.Sqrt(sumSq / float64(end-start))   // 0 … 1
-        amps[c] = rms
-    }
+		var sumSq float64
+		for i := start; i < end; i++ {
+			s := (samples[i][0] + samples[i][1]) * 0.5 // mono
+			sumSq += s * s                             // power
+		}
+		rms := math.Sqrt(sumSq / float64(end-start)) // 0 … 1
+		amps[c] = rms
+	}
 
-    select {
-    case vs.ampChan <- amps:
-    default:
-    }
-    return n, ok
+	select {
+	case vs.ampChan <- amps:
+	default:
+	}
+	return n, ok
 }
-
