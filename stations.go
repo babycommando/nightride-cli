@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -26,7 +25,7 @@ var stations = []station{
 }
 
 func (s station) Title() string       { return s.name }
-func (s station) Description() string { return fmt.Sprintf("%s", s.title) }
+func (s station) Description() string { return s.title }
 func (s station) FilterValue() string { return s.name }
 func (s station) id() string {
 	key := strings.ToLower(stationKey(s.url))
