@@ -374,8 +374,7 @@ func (m model) View() string {
 			Foreground(lipgloss.Color("#ff386f")).
 			Render(EasterEgg)
 	}
-
-	header := "▷ Paused\n  Press [Enter ↵] to Play/Pause"
+	header := "  ▐▐ PAUSED\n"
 	var currentIconKey string = "nrfm" // default for paused state
 
 	if m.playingIdx != -1 {
