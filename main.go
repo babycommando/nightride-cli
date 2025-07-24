@@ -46,7 +46,12 @@ type model struct {
 	ampChan            chan []float64 // amplitude data for visualizer
 	easterEgg          bool
 	visPeak            float64
-	isHorizontalLayout bool // toggle field for layout
+	isHorizontalLayout bool           // toggle field for layout
+	showHelp           bool           // toggle field for Help display
+	scrollOffset       int            // Song title text scrolling
+	listScrollOffset   int            // List item text scrolling
+	originalTitles     map[int]string // Store original titles to prevent data corruption
+	scrollStep         int            // Add this field to control scroll increment
 }
 
 // updateSelectorColors updates the list delegate colors based on the station's color scheme
@@ -93,25 +98,37 @@ func newModel() model {
 		items[i] = stations[i]
 	}
 	delegate := list.NewDefaultDelegate()
-	l := list.New(items, delegate, 48, len(items)*2)
-	l.Title = "↑/↓ Select Station · Enter ⏯ · Q quit"
+	l := list.New(items, delegate, 46, len(items)*2-3)
+	l.Title = "↑/↓ Navigate · [Enter↵] Play/Pause · [H]elp"
 	// Hide Bubble Tea list component
 	l.Styles.Title = l.Styles.Title.Copy(). // Need to maintain this even if not used for the background color removal!!!
-						UnsetBackground(). //	 Remove background color
-						MarginTop(2).      // Add top margin
-						Margin(0, 0).      // Remove side margins
-						Padding(0, 0)      // Remove padding
+						UnsetBackground().                     //	 Remove background color
+						MarginTop(2).                          // Add top margin
+						Margin(0, 0).                          // Remove side margins
+						Padding(0, 0).                         // Remove padding
+						Foreground(lipgloss.Color("#CCCCCC")). // Changes the color for the l.Title bar
+						Faint(true)                            // This sets opacity to approximately 75%
 	l.SetShowStatusBar(false)    // Hide the status bar
 	l.SetFilteringEnabled(false) // Disable filtering
 	l.SetShowHelp(false)         // Add this line to hide the help text
 
+	// Initialize originalTitles map
+	originalTitles := make(map[int]string)
+	for i := range stations {
+		originalTitles[i] = stations[i].title
+	}
+
 	m := model{
-		l:          l,
-		playingIdx: 0,
-		startTime:  time.Now(),
-		barHeights: make([]int, asciiArtWidth()),
-		ampChan:    make(chan []float64, 1),
-		visPeak:    0.25,
+		l:                  l,
+		playingIdx:         0,
+		startTime:          time.Now(),
+		barHeights:         make([]int, asciiArtWidth()),
+		ampChan:            make(chan []float64, 1),
+		visPeak:            0.25,
+		isHorizontalLayout: true,           // Set default to horizontal layout
+		showHelp:           false,          // Add this field
+		originalTitles:     originalTitles, // Store original titles
+		scrollStep:         1,              // Add smooth scrolling step
 	}
 
 	// Set initial selector colors for the first station
@@ -135,6 +152,7 @@ func (m model) Init() tea.Cmd {
 		startStreamCmd(0, m.ampChan),
 		fetchAllMetaCmd(),
 		visualizerTick(),
+		scrollTick(),
 	)
 }
 
@@ -144,6 +162,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "h":
+			m.showHelp = !m.showHelp // toggle help display
+			return m, nil
 		case "l":
 			m.isHorizontalLayout = !m.isHorizontalLayout // toggle layout
 			return m, nil
@@ -167,6 +188,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "down", "k", "j":
 			var cmd tea.Cmd
 			m.l, cmd = m.l.Update(msg)
+			// Reset list scroll when changing selection for smoother transition
+			m.listScrollOffset = 0
 			// Update selector colors based on the currently hovered station
 			idx := m.l.Index()
 			if idx < len(stations) {
@@ -191,6 +214,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				st.title, st.listeners = meta.title, meta.listeners
 				m.l.SetItem(i, st)
 				stations[i].title, stations[i].listeners = st.title, st.listeners
+				// Update original titles map
+				m.originalTitles[i] = meta.title
 
 				// 🔁 Update Discord status *only for current station*
 				if i == m.playingIdx {
@@ -296,6 +321,46 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, visualizerTick()
 		}
+		if msg == "scrollTick" {
+			// Only scroll if there's a playing station with long title
+			if m.playingIdx != -1 {
+				// Use original title for comparison and scrolling
+				originalTitle := m.originalTitles[m.playingIdx]
+				if len(originalTitle) > 43 {
+					m.scrollOffset += m.scrollStep
+				}
+			}
+
+			// Scroll the currently hovered list item (but not if it's the playing station)
+			hoveredIdx := m.l.Index()
+			if hoveredIdx >= 0 && hoveredIdx < len(stations) && hoveredIdx != m.playingIdx {
+				// Use original title for comparison
+				originalTitle := m.originalTitles[hoveredIdx]
+				if len(originalTitle) > 43 { // Adjust max width as needed
+					m.listScrollOffset += m.scrollStep
+					// Create scrolled display title from original
+					displayTitle := originalTitle
+					paddedTitle := displayTitle + "    "
+					totalLen := len(paddedTitle)
+					scrollPos := m.listScrollOffset % totalLen
+
+					if scrollPos+43 <= totalLen {
+						displayTitle = paddedTitle[scrollPos : scrollPos+43]
+					} else {
+						part1 := paddedTitle[scrollPos:]
+						part2 := paddedTitle[:43-len(part1)]
+						displayTitle = part1 + part2
+					}
+
+					// Update only the list item display, not the original data
+					hoveredStation := stations[hoveredIdx]
+					hoveredStation.title = displayTitle
+					m.l.SetItem(hoveredIdx, hoveredStation)
+				}
+			}
+
+			return m, scrollTick()
+		}
 	}
 
 	var cmd tea.Cmd
@@ -309,7 +374,8 @@ func (m model) View() string {
 			Foreground(lipgloss.Color("#ff386f")).
 			Render(EasterEgg)
 	}
-	header := "▷ Paused\n  Press \"Enter ↵\" to play"
+
+	header := "▷ Paused\n  Press [Enter ↵] to Play/Pause"
 	var currentIconKey string = "nrfm" // default for paused state
 
 	if m.playingIdx != -1 {
@@ -322,21 +388,75 @@ func (m model) View() string {
 			currentIconKey = "nrfm"
 		}
 
+		// Handle scrolling text for long titles using original title
+		originalTitle := m.originalTitles[m.playingIdx]
+		displayTitle := originalTitle
+		maxWidth := 43
+		if len(originalTitle) > maxWidth {
+			// Add padding to create smooth scrolling
+			paddedTitle := originalTitle + "    " // Add some spaces between loops
+			totalLen := len(paddedTitle)
+
+			// Calculate scroll position
+			scrollPos := m.scrollOffset % totalLen
+
+			// Create the visible portion
+			if scrollPos+maxWidth <= totalLen {
+				displayTitle = paddedTitle[scrollPos : scrollPos+maxWidth]
+			} else {
+				// Handle wrap-around
+				part1 := paddedTitle[scrollPos:]
+				part2 := paddedTitle[:maxWidth-len(part1)]
+				displayTitle = part1 + part2
+			}
+		}
+
 		header = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD75F")).
-			Render("▶ " + item.name + "\n  " + item.title)
+			Render("  " + item.name + "\n  " + "▶ " + displayTitle)
 	}
 
-	visual := RenderVisualizedASCII(m.barHeights, currentIconKey)
+	var visual string
+	if m.showHelp {
+		// Show controls in place of ASCII art, maintaining the same width
+		controlsText := `
+┌───────────── HELP ─────────────┐
+│ Controls:                      │
+│ ↑/↓, j/k    Navigate stations  │
+│ Enter↵      Play/Pause         │
+│ L           Toggle layout      │
+│ H           Show/hide help     │
+│ Z           Easter egg mode    │
+│ Q, Ctrl+C   Quit               │
+└────────────────────────────────┘
+ Press [H] again to hide help...
 
-	// Add layout toggle info to the title
+MORE INFO:
+· Nightride FM
+https://nightride.fm
+· GitHub
+https://github.com/babycommando/nightride-cli
+`
+
+		// Get the width of the ASCII art to maintain consistent layout
+		asciiWidth := asciiArtWidth()
+		visual = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#ff386f")).
+			Width(asciiWidth).
+			Render(controlsText)
+	} else {
+		visual = RenderVisualizedASCII(m.barHeights, currentIconKey)
+	}
+
 	if m.isHorizontalLayout {
-		// Horizontal layout: ASCII art on left, controls on right
+		// Horizontal layout: ASCII art (or controls) on left, station list on right
 		rightPanel := lipgloss.JoinVertical(lipgloss.Left, header, m.l.View())
-		return lipgloss.JoinHorizontal(lipgloss.Top, visual, rightPanel)
+		rightPanelWithMargin := lipgloss.NewStyle().MarginTop(1).Render(rightPanel)
+		return lipgloss.JoinHorizontal(lipgloss.Top, visual, rightPanelWithMargin)
 	} else {
 		// Vertical layout: everything stacked vertically (original layout)
-		// ASCII art on top, controls below
-		return lipgloss.JoinVertical(lipgloss.Left, visual, header, m.l.View())
+		// ASCII art (or controls) on top, station list below
+		visualWithMargin := lipgloss.NewStyle().MarginLeft(1).Render(visual)
+		return lipgloss.JoinVertical(lipgloss.Left, visualWithMargin, header, m.l.View())
 	}
 }
 
@@ -528,9 +648,17 @@ func tickMetaLoop() tea.Cmd {
 	})
 }
 
+// Visualizer tick for updating the visualizer bars
 func visualizerTick() tea.Cmd {
 	return tea.Tick(33*time.Millisecond, func(time.Time) tea.Msg {
 		return "visualizerTick"
+	})
+}
+
+// Scroll speed tick for song title
+func scrollTick() tea.Cmd {
+	return tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg {
+		return "scrollTick"
 	})
 }
 
