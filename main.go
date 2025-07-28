@@ -22,7 +22,7 @@ import (
 	"github.com/faiface/beep/speaker"
 )
 
-/* ─────────────  Bubble Tea model  ───────────── */
+/* ─────────────  Bubble Tea model  (player) ───────────── */
 
 type (
 	metaAllMsg = map[string]struct {
@@ -43,55 +43,35 @@ type model struct {
 	streamer           beep.StreamSeekCloser
 	respBody           io.Closer
 	barHeights         []int
-	ampChan            chan []float64 // amplitude data for visualizer
+	ampChan            chan []float64
 	easterEgg          bool
 	visPeak            float64
-	isHorizontalLayout bool           // toggle field for layout
-	showHelp           bool           // toggle field for Help display
-	scrollOffset       int            // Song title text scrolling
-	listScrollOffset   int            // List item text scrolling
-	originalTitles     map[int]string // Store original titles to prevent data corruption
-	scrollStep         int            // Add this field to control scroll increment
+	isHorizontalLayout bool
+	showHelp           bool
+	scrollOffset       int
+	listScrollOffset   int
+	originalTitles     map[int]string
+	scrollStep         int
 }
 
-// updateSelectorColors updates the list delegate colors based on the station's color scheme
 func (m *model) updateSelectorColors(iconKey string) {
 	colors, exists := StationColors[iconKey]
 	if !exists {
-		// Default to the original pink-purple gradient
 		colors = []string{"#ff386f", "#7d3cff"}
 	}
-
-	// Create a new delegate with updated colors
 	delegate := list.NewDefaultDelegate()
-
-	// Set foreground (text) and bar (left border) color
 	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.Copy().
 		Foreground(lipgloss.Color(colors[0])).
 		BorderLeftForeground(lipgloss.Color(colors[0]))
-
 	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.Copy().
 		Foreground(lipgloss.Color(colors[1])).
 		BorderLeftForeground(lipgloss.Color(colors[1]))
-
-	// Update the list with the new delegate
 	m.l.SetDelegate(delegate)
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
+func min(a, b int) int { if a < b { return a }; return b }
+func max(a, b int) int { if a > b { return a }; return b }
 
-/* ─────────────  Bubble Tea setup  ───────────── */
 func newModel() model {
 	items := make([]list.Item, len(stations))
 	for i := range stations {
@@ -99,20 +79,18 @@ func newModel() model {
 	}
 	delegate := list.NewDefaultDelegate()
 	l := list.New(items, delegate, 46, len(items)*2-3)
-	l.Title = "↑/↓ Navigate · [Enter↵] Play/Pause · [H]elp"
-	// Hide Bubble Tea list component
-	l.Styles.Title = l.Styles.Title.Copy(). // Need to maintain this even if not used for the background color removal!!!
-						UnsetBackground().                     //	 Remove background color
-						MarginTop(2).                          // Add top margin
-						Margin(0, 0).                          // Remove side margins
-						Padding(0, 0).                         // Remove padding
-						Foreground(lipgloss.Color("#CCCCCC")). // Changes the color for the l.Title bar
-						Faint(true)                            // This sets opacity to approximately 75%
-	l.SetShowStatusBar(false)    // Hide the status bar
-	l.SetFilteringEnabled(false) // Disable filtering
-	l.SetShowHelp(false)         // Add this line to hide the help text
+	l.Title = "↑/↓ Navigate · [↵] Play/Pause · [TAB]Chat"
+	l.Styles.Title = l.Styles.Title.Copy().
+		UnsetBackground().
+		MarginTop(2).
+		Margin(0, 0).
+		Padding(0, 0).
+		Foreground(lipgloss.Color("#CCCCCC")).
+		Faint(true)
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(false)
+	l.SetShowHelp(false)
 
-	// Initialize originalTitles map
 	originalTitles := make(map[int]string)
 	for i := range stations {
 		originalTitles[i] = stations[i].title
@@ -125,13 +103,12 @@ func newModel() model {
 		barHeights:         make([]int, asciiArtWidth()),
 		ampChan:            make(chan []float64, 1),
 		visPeak:            0.25,
-		isHorizontalLayout: true,           // Set default to horizontal layout
-		showHelp:           false,          // Add this field
-		originalTitles:     originalTitles, // Store original titles
-		scrollStep:         1,              // Add smooth scrolling step
+		isHorizontalLayout: true,
+		showHelp:           false,
+		originalTitles:     originalTitles,
+		scrollStep:         1,
 	}
 
-	// Set initial selector colors for the first station
 	if len(stations) > 0 {
 		st := stations[0]
 		iconKey := strings.ToLower(stationKey(st.url))
@@ -163,13 +140,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "h":
-			m.showHelp = !m.showHelp // toggle help display
+			m.showHelp = !m.showHelp
 			return m, nil
 		case "l":
-			m.isHorizontalLayout = !m.isHorizontalLayout // toggle layout
+			m.isHorizontalLayout = !m.isHorizontalLayout
 			return m, nil
 		case "z":
-			m.easterEgg = !m.easterEgg // toggle easter egg mode
+			m.easterEgg = !m.easterEgg
 			return m, nil
 		case "q", "ctrl+c":
 			m.stopCurrent()
@@ -188,9 +165,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "down", "k", "j":
 			var cmd tea.Cmd
 			m.l, cmd = m.l.Update(msg)
-			// Reset list scroll when changing selection for smoother transition
 			m.listScrollOffset = 0
-			// Update selector colors based on the currently hovered station
 			idx := m.l.Index()
 			if idx < len(stations) {
 				st := stations[idx]
@@ -214,14 +189,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				st.title, st.listeners = meta.title, meta.listeners
 				m.l.SetItem(i, st)
 				stations[i].title, stations[i].listeners = st.title, st.listeners
-				// Update original titles map
 				m.originalTitles[i] = meta.title
 
-				// 🔁 Update Discord status *only for current station*
 				if i == m.playingIdx {
-					// now := time.Now()
-					iconKey := strings.ToLower(stationKey(st.url)) // "Darksynth.mp3" → "darksynth.mp3"
-					iconKey = strings.TrimSuffix(iconKey, ".mp3")  // → "darksynth"
+					iconKey := strings.ToLower(stationKey(st.url))
+					iconKey = strings.TrimSuffix(iconKey, ".mp3")
 					if iconKey == "nightride" {
 						iconKey = "nrfm"
 					}
@@ -241,18 +213,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						LargeImage: iconKey,
 						SmallImage: "nrfm",
 						LargeText:  track,
-						Timestamps: &client.Timestamps{
-							Start: &m.startTime,
-						},
+						Timestamps: &client.Timestamps{Start: &m.startTime},
 						Buttons: []*client.Button{
-							{
-								Label: "Listen to " + st.name,
-								Url:   "https://nightride.fm/?station=" + st.id(),
-							},
-							{
-								Label: "Join the Discord",
-								Url:   "https://discord.gg/synthwave",
-							},
+							{Label: "Listen to " + st.name, Url: "https://nightride.fm/?station=" + st.id()},
+							{Label: "Join the Discord", Url: "https://discord.gg/synthwave"},
 						},
 					})
 					if err != nil {
@@ -271,14 +235,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case amps := <-m.ampChan:
 				height := asciiArtHeight()
 
-				// ── stable gain via slow‑decaying peak envelope ──
 				frameMax := 0.0
 				for _, a := range amps {
 					if a > frameMax {
 						frameMax = a
 					}
 				}
-				const peakDecay = 0.93 // slower → smoother gain
+				const peakDecay = 0.93
 				m.visPeak *= peakDecay
 				if frameMax > m.visPeak {
 					m.visPeak = frameMax
@@ -289,11 +252,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				gain := globalGain * float64(height-1) / m.visPeak
 
-				// ── column processing ──
 				const (
-					gamma = 0.85 // closer to raw RMS, punchier transients
-					atk   = 0.9  // bars shoot up almost instantly
-					dec   = 0.30 // bars fall a bit quicker
+					gamma = 0.85
+					atk   = 0.9
+					dec   = 0.30
 				)
 
 				for i := range m.barHeights {
@@ -306,7 +268,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.barHeights[i] = int(a*shaped + (1-a)*current)
 				}
 
-				// ── light 3‑tap blur ──
 				prev := m.barHeights
 				blur := make([]int, len(prev))
 				for i := range prev {
@@ -317,28 +278,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.barHeights = blur
 
-			default: /* no new amplitudes */
+			default:
 			}
 			return m, visualizerTick()
 		}
 		if msg == "scrollTick" {
-			// Only scroll if there's a playing station with long title
 			if m.playingIdx != -1 {
-				// Use original title for comparison and scrolling
 				originalTitle := m.originalTitles[m.playingIdx]
 				if len(originalTitle) > 43 {
 					m.scrollOffset += m.scrollStep
 				}
 			}
 
-			// Scroll the currently hovered list item (but not if it's the playing station)
 			hoveredIdx := m.l.Index()
 			if hoveredIdx >= 0 && hoveredIdx < len(stations) && hoveredIdx != m.playingIdx {
-				// Use original title for comparison
 				originalTitle := m.originalTitles[hoveredIdx]
-				if len(originalTitle) > 43 { // Adjust max width as needed
+				if len(originalTitle) > 43 {
 					m.listScrollOffset += m.scrollStep
-					// Create scrolled display title from original
 					displayTitle := originalTitle
 					paddedTitle := displayTitle + "    "
 					totalLen := len(paddedTitle)
@@ -352,7 +308,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						displayTitle = part1 + part2
 					}
 
-					// Update only the list item display, not the original data
 					hoveredStation := stations[hoveredIdx]
 					hoveredStation.title = displayTitle
 					m.l.SetItem(hoveredIdx, hoveredStation)
@@ -375,37 +330,28 @@ func (m model) View() string {
 			Render(EasterEgg)
 	}
 	header := "  ▐▐ PAUSED\n"
-	var currentIconKey string = "nrfm" // default for paused state
+	currentIconKey := "nrfm"
 
 	if m.playingIdx != -1 {
 		item := m.l.Items()[m.playingIdx].(station)
-
-		// Get the icon key for the current station
 		currentIconKey = strings.ToLower(stationKey(item.url))
 		currentIconKey = strings.TrimSuffix(currentIconKey, ".mp3")
 		if currentIconKey == "nightride" {
 			currentIconKey = "nrfm"
 		}
 
-		// Handle scrolling text for long titles using original title
 		originalTitle := m.originalTitles[m.playingIdx]
 		displayTitle := originalTitle
 		maxWidth := 43
 		if len(originalTitle) > maxWidth {
-			// Add padding to create smooth scrolling
-			paddedTitle := originalTitle + "    " // Add some spaces between loops
-			totalLen := len(paddedTitle)
-
-			// Calculate scroll position
-			scrollPos := m.scrollOffset % totalLen
-
-			// Create the visible portion
-			if scrollPos+maxWidth <= totalLen {
-				displayTitle = paddedTitle[scrollPos : scrollPos+maxWidth]
+			padded := originalTitle + "    "
+			total := len(padded)
+			pos := m.scrollOffset % total
+			if pos+maxWidth <= total {
+				displayTitle = padded[pos : pos+maxWidth]
 			} else {
-				// Handle wrap-around
-				part1 := paddedTitle[scrollPos:]
-				part2 := paddedTitle[:maxWidth-len(part1)]
+				part1 := padded[pos:]
+				part2 := padded[:maxWidth-len(part1)]
 				displayTitle = part1 + part2
 			}
 		}
@@ -416,7 +362,6 @@ func (m model) View() string {
 
 	var visual string
 	if m.showHelp {
-		// Show controls in place of ASCII art, maintaining the same width
 		controlsText := `
 ┌───────────── HELP ─────────────┐
 │ Controls:                      │
@@ -435,8 +380,6 @@ https://nightride.fm
 · GitHub
 https://github.com/babycommando/nightride-cli
 `
-
-		// Get the width of the ASCII art to maintain consistent layout
 		asciiWidth := asciiArtWidth()
 		visual = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#ff386f")).
@@ -447,28 +390,24 @@ https://github.com/babycommando/nightride-cli
 	}
 
 	if m.isHorizontalLayout {
-		// Horizontal layout: ASCII art (or controls) on left, station list on right
 		rightPanel := lipgloss.JoinVertical(lipgloss.Left, header, m.l.View())
 		rightPanelWithMargin := lipgloss.NewStyle().MarginTop(1).Render(rightPanel)
 		return lipgloss.JoinHorizontal(lipgloss.Top, visual, rightPanelWithMargin)
-	} else {
-		// Vertical layout: everything stacked vertically (original layout)
-		// ASCII art (or controls) on top, station list below
-		visualWithMargin := lipgloss.NewStyle().MarginLeft(1).Render(visual)
-		return lipgloss.JoinVertical(lipgloss.Left, visualWithMargin, header, m.l.View())
 	}
+
+	visualWithMargin := lipgloss.NewStyle().MarginLeft(1).Render(visual)
+	return lipgloss.JoinVertical(lipgloss.Left, visualWithMargin, header, m.l.View())
 }
 
-// ─────────────  global audio state  ─────────────
+/* audio */
+
 var (
 	speakerOnce     sync.Once
 	mixerSampleRate beep.SampleRate
 )
 
-/* ─────────────  Audio helpers  ───────────── */
-
 func (m *model) stopCurrent() {
-	_ = client.SetActivity(client.Activity{}) // ← clears Discord presence
+	_ = client.SetActivity(client.Activity{})
 	speaker.Clear()
 
 	if m.streamer != nil {
@@ -481,21 +420,15 @@ func (m *model) stopCurrent() {
 	}
 }
 
-func dialAndDecode(url string, tries int) (
-	decoded beep.StreamSeekCloser,
-	format beep.Format,
-	body io.ReadCloser,
-	err error,
-) {
+func dialAndDecode(url string, tries int) (beep.StreamSeekCloser, beep.Format, io.ReadCloser, error) {
 	for i := 0; i < tries; i++ {
-		var resp *http.Response
-		resp, err = http.Get(url)
+		resp, err := http.Get(url)
 		if err != nil {
 			time.Sleep(250 * time.Millisecond)
 			continue
 		}
 
-		decoded, format, err = mp3.Decode(resp.Body)
+		decoded, format, err := mp3.Decode(resp.Body)
 		if err == nil {
 			return decoded, format, resp.Body, nil
 		}
@@ -503,7 +436,7 @@ func dialAndDecode(url string, tries int) (
 		resp.Body.Close()
 		time.Sleep(250 * time.Millisecond)
 	}
-	return nil, beep.Format{}, nil, err
+	return nil, beep.Format{}, nil, fmt.Errorf("failed to decode")
 }
 
 func startStreamCmd(idx int, ampChan chan []float64) tea.Cmd {
@@ -532,14 +465,12 @@ func startStreamCmd(idx int, ampChan chan []float64) tea.Cmd {
 		speaker.Clear()
 		speaker.Play(playStream)
 
-		// ↓↓↓ fixed lowercase + nrfm remap
 		iconKey := strings.ToLower(stationKey(st.url))
 		iconKey = strings.TrimSuffix(iconKey, ".mp3")
 		if iconKey == "nightride" {
 			iconKey = "nrfm"
 		}
 
-		// ↓↓↓ split "Artist – Title" if possible
 		parts := strings.SplitN(st.title, " – ", 2)
 		artist := ""
 		track := st.title
@@ -554,20 +485,12 @@ func startStreamCmd(idx int, ampChan chan []float64) tea.Cmd {
 			State:      artist,
 			Details:    "Listening to " + st.name,
 			LargeImage: iconKey,
-			SmallImage: "nrfm", // fixed logo
+			SmallImage: "nrfm",
 			LargeText:  track,
-			Timestamps: &client.Timestamps{
-				Start: &now,
-			},
+			Timestamps: &client.Timestamps{Start: &now},
 			Buttons: []*client.Button{
-				{
-					Label: "Listen to " + st.name,
-					Url:   "https://nightride.fm/?station=" + st.id(),
-				},
-				{
-					Label: "Join the Discord",
-					Url:   "https://discord.gg/synthwave",
-				},
+				{Label: "Listen to " + st.name, Url: "https://nightride.fm/?station=" + st.id()},
+				{Label: "Join the Discord", Url: "https://discord.gg/synthwave"},
 			},
 		})
 
@@ -575,7 +498,7 @@ func startStreamCmd(idx int, ampChan chan []float64) tea.Cmd {
 	}
 }
 
-/* ─────────────  Metadata  ───────────── */
+/* meta */
 
 type nowPlaying struct {
 	Station string `json:"station"`
@@ -623,7 +546,7 @@ func fetchAllMeta() tea.Msg {
 			}
 			meta[key] = struct {
 				title     string
-				listeners int //	not used
+				listeners int
 			}{
 				title:     fmt.Sprintf("%s – %s", np.Artist, np.Title),
 				listeners: 0,
@@ -642,40 +565,15 @@ func fetchAllMeta() tea.Msg {
 }
 
 func tickMetaLoop() tea.Cmd {
-	return tea.Tick(5*time.Second, func(time.Time) tea.Msg {
-		return fetchAllMeta()
-	})
+	return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return fetchAllMeta() })
 }
 
-// Visualizer tick for updating the visualizer bars
 func visualizerTick() tea.Cmd {
-	return tea.Tick(33*time.Millisecond, func(time.Time) tea.Msg {
-		return "visualizerTick"
-	})
+	return tea.Tick(33*time.Millisecond, func(time.Time) tea.Msg { return "visualizerTick" })
 }
 
-// Scroll speed tick for song title
 func scrollTick() tea.Cmd {
-	return tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg {
-		return "scrollTick"
-	})
-}
-
-/* ─────────────  main  ───────────── */
-
-func main() {
-	// Set the process title
-	os.Args[0] = "Nightride FM"
-
-	err := client.Login("1396017162425991279")
-	if err != nil {
-		fmt.Println("discord rpc error:", err)
-	}
-
-	if err := tea.NewProgram(newModel(), tea.WithAltScreen()).Start(); err != nil && err != io.EOF {
-		fmt.Println("fatal:", err)
-		os.Exit(1)
-	}
+	return tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg { return "scrollTick" })
 }
 
 type visualizerStreamer struct {
@@ -690,7 +588,6 @@ func (vs *visualizerStreamer) Stream(samples [][2]float64) (int, bool) {
 	cols := vs.width
 	amps := make([]float64, cols)
 
-	// bucket == how many samples belong to ONE bar
 	bucket := n / cols
 	if bucket == 0 {
 		bucket = 1
@@ -705,10 +602,10 @@ func (vs *visualizerStreamer) Stream(samples [][2]float64) (int, bool) {
 
 		var sumSq float64
 		for i := start; i < end; i++ {
-			s := (samples[i][0] + samples[i][1]) * 0.5 // mono
-			sumSq += s * s                             // power
+			s := (samples[i][0] + samples[i][1]) * 0.5
+			sumSq += s * s
 		}
-		rms := math.Sqrt(sumSq / float64(end-start)) // 0 … 1
+		rms := math.Sqrt(sumSq / float64(end-start))
 		amps[c] = rms
 	}
 
@@ -717,4 +614,92 @@ func (vs *visualizerStreamer) Stream(samples [][2]float64) (int, bool) {
 	default:
 	}
 	return n, ok
+}
+
+/* ───────────── ROOT WRAPPER (player + zuse) ───────────── */
+
+type rootModel struct {
+	active int // 0 = player, 1 = irc
+	player model
+	irc    *ZuseModel
+}
+
+func newRootModel() rootModel {
+	return rootModel{
+		active: 0,
+		player: newModel(),
+		irc:    NewZuseModel(),
+	}
+}
+
+func (r rootModel) Init() tea.Cmd {
+	return tea.Batch(r.player.Init(), r.irc.Init())
+}
+
+func (r rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// handle tab switching here
+	if k, ok := msg.(tea.KeyMsg); ok && k.String() == "tab" {
+		if r.active == 0 {
+			r.active = 1
+		} else {
+			r.active = 0
+		}
+		return r, nil
+	}
+
+	// Window size must go to both so they layout correctly
+	if _, ok := msg.(tea.WindowSizeMsg); ok {
+		pNew, pCmd := r.player.Update(msg)
+		r.player = pNew.(model)
+
+		iNew, iCmd := r.irc.Update(msg)
+		r.irc = iNew.(*ZuseModel)
+
+		return r, tea.Batch(pCmd, iCmd)
+	}
+
+	// Key events (except tab) only to active view
+	if _, ok := msg.(tea.KeyMsg); ok {
+		if r.active == 0 {
+			pNew, pCmd := r.player.Update(msg)
+			r.player = pNew.(model)
+			return r, pCmd
+		}
+		iNew, iCmd := r.irc.Update(msg)
+		r.irc = iNew.(*ZuseModel)
+		return r, iCmd
+	}
+
+	// Non-key events: let the player always handle (audio/meta), and irc will ignore most.
+	pNew, pCmd := r.player.Update(msg)
+	r.player = pNew.(model)
+
+	if r.active == 1 {
+		iNew, iCmd := r.irc.Update(msg)
+		r.irc = iNew.(*ZuseModel)
+		return r, tea.Batch(pCmd, iCmd)
+	}
+	return r, pCmd
+}
+
+func (r rootModel) View() string {
+	if r.active == 0 {
+		return r.player.View()
+	}
+	return r.irc.View()
+}
+
+/* ───────────── main ───────────── */
+
+func main() {
+	os.Args[0] = "Nightride + ZUSE"
+
+	if err := client.Login("1396017162425991279"); err != nil {
+		fmt.Println("discord rpc error:", err)
+	}
+
+	if err := tea.NewProgram(newRootModel(), tea.WithAltScreen()).Start(); err != nil && err != io.EOF {
+		fmt.Println("fatal:", err)
+		os.Exit(1)
+	}
 }
