@@ -13,6 +13,18 @@ Built for the command line frontier.
 - All radio stations directly accessible from the terminal
 - No need for extra audio players
 - Support for Discord Rich Presence
+- Direct IRC access to Rekt Network via ZUSE IRC
+
+<!-- Top image -->
+<p align="center">
+  <img src="assets/img1.png" alt="ZUSE Screenshot 1" width="600"/>
+</p>
+
+<!-- Two images side by side -->
+<p align="center">
+  <img src="assets/img2.png" alt="ZUSE Screenshot 2" width="45%"/>
+  <img src="assets/img3.png" alt="ZUSE Screenshot 3" width="45%"/>
+</p>
 
 ## Quick Installation
 
