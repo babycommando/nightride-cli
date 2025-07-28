@@ -13,7 +13,7 @@ Built for the command line frontier.
 - All radio stations directly accessible from the terminal
 - No need for extra audio players
 - Support for Discord Rich Presence
-- Direct IRC access to Rekt Network via ZUSE IRC
+- Direct IRC access to Rekt Network via [ZUSE IRC](https://github.com/babycommando/zuse/tree/v1.0)
 
 <!-- Top image -->
 <p align="center">
