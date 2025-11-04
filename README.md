@@ -24,7 +24,7 @@ Built for the command line frontier.
 - Direct IRC access to Rekt Network via [ZUSE IRC](https://github.com/babycommando/zuse/tree/v1.0)
 
 <!-- Top image -->
-![Zuse](assets/assets/img1.png)
+![Zuse](assets/img1.png)
 
 <!-- Two images side by side -->
 <p align="center">
