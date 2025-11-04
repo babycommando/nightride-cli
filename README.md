@@ -34,7 +34,7 @@ The project includes a .wad freeware version of DOOM. Wad files are the things p
 
 ## Quick Installation
 
-1. ### [Download](https://github.com/babycommando/nightride-cli/releases/tag/v1.0.1) a prebuilt binary from the releases or [build the Go project yourself](https://github.com/babycommando/nightride-cli/tree/main?tab=readme-ov-file#build-instructions-its-very-fast).
+1. ### [Download](https://github.com/babycommando/nightride-cli/releases/tag/v1.5) a prebuilt binary from the releases or [build the Go project yourself](https://github.com/babycommando/nightride-cli/tree/main?tab=readme-ov-file#build-instructions-its-very-fast).
 
 2. ### Dependencies
 
