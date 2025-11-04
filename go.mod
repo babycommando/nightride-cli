@@ -1,15 +1,18 @@
 module github.com/babycommando/nightride-cli
 
-go 1.23.0
+go 1.24.4
 
-toolchain go1.23.11
+toolchain go1.24.9
 
 require (
+	github.com/AndreRenaud/gore v0.0.0-20251019233016-9bc8fbd3d98e
 	github.com/babycommando/rich-go v0.0.0-20250721232012-541cbf3cf142
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.6
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/faiface/beep v1.1.0
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
+	golang.org/x/term v0.36.0
 )
 
 require (
@@ -39,8 +42,8 @@ require (
 	golang.org/x/exp/shiny v0.0.0-20250718183923-645b1fa84792 // indirect
 	golang.org/x/image v0.29.0 // indirect
 	golang.org/x/mobile v0.0.0-20250606033058-a2a15c67f36f // indirect
-	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/sys v0.34.0 // indirect
+	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
 )

@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -30,10 +34,10 @@ var (
 	styleDarkPink = lipgloss.NewStyle().Foreground(lipgloss.Color("#ac215f"))
 
 	titleStyle = lipgloss.NewStyle().
-		Background(darkPink).
-		Foreground(lipgloss.Color("#000000")).
-		Bold(true).
-		Padding(0, 1)
+			Background(darkPink).
+			Foreground(lipgloss.Color("#000000")).
+			Bold(true).
+			Padding(0, 1)
 
 	box = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -45,21 +49,24 @@ var (
 type serverID int
 
 type serverEntry struct {
-	id        serverID
-	name      string
-	address   string // host:port
-	tls       bool
-	nick      string
+	id      serverID
+	name    string
+	address string // host:port
+	tls     bool
+	nick    string
 
-	channel string // list entry channel
+	channel string
 
 	channels    []string
-	channelLogs map[string][]string // channel => lines ("_sys" for system)
+	channelLogs map[string][]string
 	joined      map[string]bool
 	client      *girc.Client
 	connected   bool
 
-	queued []ircChanLineMsg // buffered until UI sized
+	queued []ircChanLineMsg
+
+	// SSE preview feeds per channel (only for #rekt and #nightride)
+	sseCancels map[string]context.CancelFunc
 }
 
 func (s serverEntry) Title() string {
@@ -139,36 +146,62 @@ type ircModel struct {
 	activeChan string
 	chatVP     viewport.Model
 	chatInput  textinput.Model
-	awaitNick bool
+	awaitNick  bool
 
 	headerLines int
 	ready       bool
 
-	push func(tea.Msg) // async sender from girc handlers
+	darkDel   list.DefaultDelegate
+	brightDel list.DefaultDelegate
+
+	push func(tea.Msg)
+}
+
+/* SSE preview configuration */
+
+var previewFeeds = map[string]string{
+	"#rekt":      "https://rekt.network/irc",
+	"#nightride": "https://nightride.fm/irc",
+}
+
+// Toggle if you ever want to keep JOIN/QUIT via SSE after connecting (defaults off to avoid duplicates).
+const keepSSEAfterConnect = false
+
+type ssePacket struct {
+	Nick      string   `json:"Nick"`
+	Host      string   `json:"Host"`
+	User      string   `json:"User"`
+	Code      string   `json:"Code"`
+	Timestamp int64    `json:"Timestamp"`
+	Args      []string `json:"Args"`
 }
 
 func initialIRCModel() *ircModel {
-	delegate := list.NewDefaultDelegate()
-	delegate.ShowDescription = true
+	// darker selection (when LEFT pane is not focused)
+	darkDel := list.NewDefaultDelegate()
+	darkDel.ShowDescription = true
+	darkDel.Styles.NormalTitle = stylePink
+	darkDel.Styles.NormalDesc = styleDim
+	darkDel.Styles.SelectedTitle = styleDarkSel
+	darkDel.Styles.SelectedDesc = styleDarkSel
 
-	delegate.Styles.NormalTitle = stylePink
-	delegate.Styles.NormalDesc = styleDim
+	// original pink selection (when LEFT pane IS focused)
+	brightDel := list.NewDefaultDelegate()
+	brightDel.ShowDescription = true
+	brightDel.Styles.NormalTitle = stylePink
+	brightDel.Styles.NormalDesc = styleDim
+	brightDel.Styles.SelectedTitle = styleSel
+	brightDel.Styles.SelectedDesc = styleSel
 
-	selectedStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#000000")).
-		Background(darkPink).
-		Bold(true)
-	delegate.Styles.SelectedTitle = selectedStyle
-	delegate.Styles.SelectedDesc = selectedStyle
+	l := list.New([]list.Item{addServerItem{}}, darkDel, 20, 10) // start with RIGHT pane focused
 
-	l := list.New([]list.Item{addServerItem{}}, delegate, 20, 10)
 	l.SetShowTitle(false)
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(false)
 	l.SetShowPagination(false)
 	l.SetShowStatusBar(false)
 
-	rowH := delegate.Height() + delegate.Spacing()
+	rowH := darkDel.Height() + darkDel.Spacing()
 
 	var inputs [totalFields]textinput.Model
 	newTI := func(ph string) textinput.Model {
@@ -199,10 +232,19 @@ func initialIRCModel() *ircModel {
 		nextID:     1,
 		formInputs: inputs,
 		chatInput:  ci,
+		darkDel:    darkDel,
+		brightDel:  brightDel,
 	}
 }
 
 func (m *ircModel) Init() tea.Cmd {
+	// Make sure we start with RIGHT pane focused (text input), not hovering left list.
+	m.applyListFocus()
+	if m.mode == modeChat {
+		m.chatInput.Focus()
+		return textinput.Blink
+	}
+	// default: form focus
 	m.formInputs[m.formSel].Focus()
 	return textinput.Blink
 }
@@ -215,6 +257,14 @@ func sendChanLineCmd(id serverID, ch, line string) tea.Cmd {
 func addListItemCmd(it serverEntry) tea.Cmd { return func() tea.Msg { return addListItemMsg{item: it} } }
 
 /* UPDATE */
+
+func (m *ircModel) applyListFocus() {
+	if m.focus == paneServers {
+		m.serverList.SetDelegate(m.brightDel)
+	} else {
+		m.serverList.SetDelegate(m.darkDel)
+	}
+}
 
 func (m *ircModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -259,10 +309,12 @@ func (m *ircModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "left":
 			m.focus = paneServers
 			m.blurRight()
+			m.applyListFocus()
 			return m, nil
 		case "right":
 			m.focus = paneRight
 			m.focusRight()
+			m.applyListFocus()
 			return m, nil
 		}
 		if m.focus == paneServers {
@@ -277,7 +329,11 @@ func (m *ircModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case connectedMsg:
 		if s, ok := m.servers[serverID(msg)]; ok {
 			s.connected = true
-			m.pushSysLine(s.id, "", "-- connected --")
+			m.pushSysLine(s.id, "", "[connected]")
+			// Stop SSE preview feeds on connect (avoids duplicates).
+			if !keepSSEAfterConnect {
+				m.stopPreviewForServer(s.id)
+			}
 			if m.mode == modeChat && m.activeID == serverID(msg) {
 				m.refreshChat()
 			}
@@ -287,7 +343,7 @@ func (m *ircModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case disconnectedMsg:
 		if s, ok := m.servers[msg.id]; ok {
 			s.connected = false
-			txt := "-- disconnected --"
+			txt := "[disconnected]"
 			if msg.err != nil {
 				txt += " (" + msg.err.Error() + ")"
 			}
@@ -295,6 +351,7 @@ func (m *ircModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.mode == modeChat && m.activeID == msg.id {
 				m.refreshChat()
 			}
+			// Optionally restart preview after disconnect (kept off by default).
 		}
 		return m, nil
 
@@ -392,9 +449,9 @@ func (m *ircModel) updateServersPane(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			s := m.servers[selected.id]
 			var cmds []tea.Cmd
 			if s.client == nil || !s.connected {
-					if !m.awaitNick && s.nick != "" {
-							cmds = append(cmds, m.connectServerCmd(selected.id))
-					}
+				if !m.awaitNick && s.nick != "" {
+					cmds = append(cmds, m.connectServerCmd(selected.id))
+				}
 			} else if selected.channel != "" && !s.joined[selected.channel] {
 				s.client.Cmd.Join(selected.channel)
 				if s.joined == nil {
@@ -431,9 +488,14 @@ func (m *ircModel) updateServersPane(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch item := m.serverList.SelectedItem().(type) {
 		case serverEntry:
 			id := item.id
-			if s, ok := m.servers[id]; ok && s.client != nil {
-				s.client.Quit("bye")
-				s.client.Close()
+			if s, ok := m.servers[id]; ok {
+				// stop SSE previews
+				m.stopPreviewForServer(id)
+				// close IRC
+				if s.client != nil {
+					s.client.Quit("bye")
+					s.client.Close()
+				}
 			}
 			delete(m.servers, id)
 
@@ -488,14 +550,14 @@ func (m *ircModel) seedRekt() {
 		name:        "Rekt",
 		address:     "irc.rekt.network:6697",
 		tls:         true,
-		nick:        "", // wait user
+		nick:        "",
 		channels:    []string{"#rekt", "#nightride"},
 		channelLogs: make(map[string][]string),
 		joined:      make(map[string]bool),
+		sseCancels:  make(map[string]context.CancelFunc),
 	}
 	m.servers[id] = s
 
-	// build list: channels as individual items, then "+ Add"
 	var items []list.Item
 	for _, it := range m.serverList.Items() {
 		if _, ok := it.(addServerItem); !ok {
@@ -512,7 +574,7 @@ func (m *ircModel) seedRekt() {
 
 	// set initial view
 	m.activeID = id
-	m.activeChan = "#rekt"
+	m.activeChan = "#nightride"
 	m.mode = modeChat
 	m.focus = paneRight
 	m.awaitNick = true
@@ -523,10 +585,11 @@ func (m *ircModel) seedRekt() {
 	m.pushSysLine(id, "_sys", "Enter a username then press Enter to connect.")
 	m.refreshChat()
 
-	// select first item (index 0)
+	// Start SSE previews for known channels before login.
+	m.startPreviewForServer(id)
+
 	m.serverList.Select(0)
 }
-
 
 func (m *ircModel) focusFormField(idx formField) tea.Cmd {
 	if idx < 0 {
@@ -605,6 +668,7 @@ func (m *ircModel) updateForm(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			channels:    cfg.Chans,
 			channelLogs: make(map[string][]string),
 			joined:      make(map[string]bool),
+			sseCancels:  make(map[string]context.CancelFunc),
 		}
 		m.servers[id] = s
 		m.injectASCIIArt(id)
@@ -629,6 +693,10 @@ func (m *ircModel) updateForm(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.mode = modeChat
 		m.focusRight()
+
+		// Start SSE previews for known channels before login.
+		m.startPreviewForServer(id)
+
 		cmds = append(cmds, m.connectServerCmd(id), textinput.Blink)
 		return m, tea.Batch(cmds...)
 	}
@@ -643,8 +711,8 @@ func (m *ircModel) updateForm(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 type formCfg struct {
 	Name, Address, Nick string
-	TLS                  bool
-	Chans                []string
+	TLS                 bool
+	Chans               []string
 }
 
 func (m *ircModel) formConfig() (formCfg, error) {
@@ -684,6 +752,8 @@ func (m *ircModel) clearForm() {
 
 /* CHAT */
 
+func nowClock() string { return time.Now().Format("15:04") }
+
 func (m *ircModel) updateChat(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "up":
@@ -702,12 +772,11 @@ func (m *ircModel) updateChat(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.chatInput.SetValue("")
 		s := m.servers[m.activeID]
 
-		// FIRST TIME: username capture
 		if m.awaitNick {
 			s.nick = txt
 			m.awaitNick = false
 			m.chatInput.Placeholder = "Type message or /command…"
-			m.pushSysLine(s.id, "_sys", "-- connecting as "+txt+" --")
+			m.pushSysLine(s.id, "_sys", "Connecting as "+txt+" ...")
 			m.refreshChat()
 			return m, m.connectServerCmd(s.id)
 		}
@@ -717,7 +786,7 @@ func (m *ircModel) updateChat(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.activeChan == "" || m.activeChan == "_sys" {
-			m.pushSysLine(s.id, "_sys", "-- no channel selected, use /join #chan or select an item --")
+			m.pushSysLine(s.id, "_sys", "No channel selected. Use /join #chan or select an item.")
 			m.refreshChat()
 			return m, nil
 		}
@@ -726,7 +795,7 @@ func (m *ircModel) updateChat(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			s.client.Cmd.Message(m.activeChan, txt)
 		}
 		line := styleDarkPink.Render(
-			fmt.Sprintf("[%s] <%s> %s", time.Now().Format("15:04"), s.nick, txt),
+			fmt.Sprintf("[%s] <%s> %s", nowClock(), s.nick, txt),
 		)
 		return m, sendChanLineCmd(s.id, m.activeChan, line)
 	}
@@ -790,10 +859,10 @@ func (m *ircModel) handleSlash(s *serverEntry, raw string) tea.Cmd {
 		}
 		s.joined[arg] = true
 
-		ascii := styleDim.Render("─── Chat initialized ───")
+		ascii := styleDim.Render("Chat initialized")
 		s.channelLogs[arg] = append(s.channelLogs[arg], ascii)
 
-		logSys("-- joined " + arg + " --")
+		logSys("joined " + arg)
 
 		copy := *s
 		copy.channel = arg
@@ -807,7 +876,7 @@ func (m *ircModel) handleSlash(s *serverEntry, raw string) tea.Cmd {
 		if s.client != nil {
 			s.client.Cmd.Nick(arg)
 		}
-		logSys("-- nick change requested: " + arg)
+		logSys("nick change requested: " + arg)
 		return nil
 
 	case "quit":
@@ -850,7 +919,6 @@ func asciiBanner() string {
 `)
 }
 
-
 func (m *ircModel) connectServerCmd(id serverID) tea.Cmd {
 	return func() tea.Msg {
 		s := m.servers[id]
@@ -877,30 +945,21 @@ func (m *ircModel) connectServerCmd(id serverID) tea.Cmd {
 		}
 		c := girc.New(cfg)
 
-		// c.Handlers.Add(girc.CONNECTED, func(cl *girc.Client, _ girc.Event) {
-		// 	m.push(ircChanLineMsg{id: id, channel: "_sys", line: styleDim.Render("-- connected to " + s.address + " --")})
-		// 	for _, ch := range s.channels {
-		// 		cl.Cmd.Join(ch)
-		// 	}
-		// 	m.push(connectedMsg(id))
-		// })
-
 		c.Handlers.Add(girc.CONNECTED, func(cl *girc.Client, _ girc.Event) {
-			// banner first
 			banner := asciiBanner()
 			m.push(ircChanLineMsg{id: id, channel: "_sys", line: banner})
 			for _, ch := range s.channels {
-					m.push(ircChanLineMsg{id: id, channel: ch, line: banner})
+				m.push(ircChanLineMsg{id: id, channel: ch, line: banner})
 			}
 
-			m.push(ircChanLineMsg{id: id, channel: "_sys", line: styleDim.Render("-- connected to " + s.address + " --")})
+			m.push(ircChanLineMsg{id: id, channel: "_sys", line: styleDim.Render("connected to " + s.address)})
 			for _, ch := range s.channels {
-					cl.Cmd.Join(ch)
+				cl.Cmd.Join(ch)
 			}
 			m.push(connectedMsg(id))
 		})
 		c.Handlers.Add(girc.DISCONNECTED, func(cl *girc.Client, _ girc.Event) {
-			m.push(ircChanLineMsg{id: id, channel: "_sys", line: styleDim.Render("-- disconnected --")})
+			m.push(ircChanLineMsg{id: id, channel: "_sys", line: styleDim.Render("disconnected")})
 			m.push(disconnectedMsg{id: id, err: nil})
 		})
 
@@ -912,7 +971,7 @@ func (m *ircModel) connectServerCmd(id serverID) tea.Cmd {
 			text := e.Params[1]
 			ch := dispatchTarget(s, target)
 			line := stylePink.Render(
-				fmt.Sprintf("[%s] <%s> %s", time.Now().Format("15:04"), e.Source.Name, text),
+				fmt.Sprintf("[%s] <%s> %s", nowClock(), e.Source.Name, text),
 			)
 			m.push(ircChanLineMsg{id: id, channel: ch, line: line})
 			if ch != "_sys" {
@@ -927,7 +986,7 @@ func (m *ircModel) connectServerCmd(id serverID) tea.Cmd {
 			target := e.Params[0]
 			text := e.Params[1]
 			ch := dispatchTarget(s, target)
-			line := fmt.Sprintf("[%s] * %s %s", time.Now().Format("15:04"), e.Source.Name, text)
+			line := fmt.Sprintf("[%s] * %s %s", nowClock(), e.Source.Name, text)
 			render := styleDim.Render(line)
 			m.push(ircChanLineMsg{id: id, channel: ch, line: render})
 			if ch != "_sys" {
@@ -942,7 +1001,7 @@ func (m *ircModel) connectServerCmd(id serverID) tea.Cmd {
 			target := e.Params[0]
 			text := e.Params[1]
 			ch := dispatchTarget(s, target)
-			line := fmt.Sprintf("[%s] -NOTICE- %s", time.Now().Format("15:04"), text)
+			line := fmt.Sprintf("[%s] -NOTICE- %s", nowClock(), text)
 			render := styleDim.Render(line)
 			m.push(ircChanLineMsg{id: id, channel: ch, line: render})
 			if ch != "_sys" {
@@ -952,7 +1011,7 @@ func (m *ircModel) connectServerCmd(id serverID) tea.Cmd {
 
 		c.Handlers.Add(girc.JOIN, func(_ *girc.Client, e girc.Event) {
 			ch := e.Params[0]
-			line := fmt.Sprintf("[%s] * %s joined %s", time.Now().Format("15:04"), e.Source.Name, ch)
+			line := fmt.Sprintf("[%s] * %s joined %s", nowClock(), e.Source.Name, ch)
 			render := styleDim.Render(line)
 			m.push(ircChanLineMsg{id: id, channel: ch, line: render})
 			m.push(ircChanLineMsg{id: id, channel: "_sys", line: render})
@@ -963,13 +1022,13 @@ func (m *ircModel) connectServerCmd(id serverID) tea.Cmd {
 		})
 		c.Handlers.Add(girc.PART, func(_ *girc.Client, e girc.Event) {
 			ch := e.Params[0]
-			line := fmt.Sprintf("[%s] * %s left %s", time.Now().Format("15:04"), e.Source.Name, ch)
+			line := fmt.Sprintf("[%s] * %s left %s", nowClock(), e.Source.Name, ch)
 			render := styleDim.Render(line)
 			m.push(ircChanLineMsg{id: id, channel: ch, line: render})
 			m.push(ircChanLineMsg{id: id, channel: "_sys", line: render})
 		})
 		c.Handlers.Add(girc.QUIT, func(_ *girc.Client, e girc.Event) {
-			line := fmt.Sprintf("[%s] * %s quit", time.Now().Format("15:04"), e.Source.Name)
+			line := fmt.Sprintf("[%s] * %s quit", nowClock(), e.Source.Name)
 			m.push(ircChanLineMsg{id: id, channel: "_sys", line: styleDim.Render(line)})
 		})
 
@@ -979,7 +1038,7 @@ func (m *ircModel) connectServerCmd(id serverID) tea.Cmd {
 			}
 			ch := e.Params[1]
 			topic := e.Params[2]
-			line := styleDim.Render("— topic: " + topic)
+			line := styleDim.Render("topic: " + topic)
 			m.push(ircChanLineMsg{id: id, channel: ch, line: line})
 			m.push(ircChanLineMsg{id: id, channel: "_sys", line: line})
 		})
@@ -990,7 +1049,7 @@ func (m *ircModel) connectServerCmd(id serverID) tea.Cmd {
 			ch := e.Params[1]
 			who := e.Params[2]
 			ts := e.Params[3]
-			line := styleDim.Render("— set by " + who + " @ " + ts)
+			line := styleDim.Render("set by " + who + " @ " + ts)
 			m.push(ircChanLineMsg{id: id, channel: ch, line: line})
 			m.push(ircChanLineMsg{id: id, channel: "_sys", line: line})
 		})
@@ -1000,7 +1059,7 @@ func (m *ircModel) connectServerCmd(id serverID) tea.Cmd {
 				return
 			}
 			ch := e.Params[1]
-			line := styleDim.Render("— end of names")
+			line := styleDim.Render("end of names")
 			m.push(ircChanLineMsg{id: id, channel: ch, line: line})
 			m.push(ircChanLineMsg{id: id, channel: "_sys", line: line})
 		})
@@ -1027,7 +1086,7 @@ func (m *ircModel) connectServerCmd(id serverID) tea.Cmd {
 			evCopy := ev
 			c.Handlers.Add(evCopy, func(_ *girc.Client, e girc.Event) {
 				text := strings.Join(e.Params, " ")
-				line := styleDim.Render(fmt.Sprintf("[%s] %s", time.Now().Format("15:04"), text))
+				line := styleDim.Render(fmt.Sprintf("[%s] %s", nowClock(), text))
 				m.push(ircChanLineMsg{id: id, channel: "_sys", line: line})
 			})
 		}
@@ -1041,7 +1100,7 @@ func (m *ircModel) connectServerCmd(id serverID) tea.Cmd {
 			evCopy := ev
 			c.Handlers.Add(evCopy, func(_ *girc.Client, e girc.Event) {
 				text := strings.Join(e.Params, " ")
-				line := styleDim.Render(fmt.Sprintf("[%s] %s %s", time.Now().Format("15:04"), e.Command, text))
+				line := styleDim.Render(fmt.Sprintf("[%s] %s %s", nowClock(), e.Command, text))
 				m.push(ircChanLineMsg{id: id, channel: "_sys", line: line})
 			})
 		}
@@ -1068,7 +1127,7 @@ func (m *ircModel) connectServerCmd(id serverID) tea.Cmd {
 					break
 				}
 			}
-			line := styleDim.Render(fmt.Sprintf("[%s] %s", time.Now().Format("15:04"), txt))
+			line := styleDim.Render(fmt.Sprintf("[%s] %s", nowClock(), txt))
 			m.push(ircChanLineMsg{id: id, channel: dest, line: line})
 			if dest != "_sys" {
 				m.push(ircChanLineMsg{id: id, channel: "_sys", line: line})
@@ -1133,6 +1192,133 @@ func (m *ircModel) blurRight() {
 	}
 }
 
+/* SSE PREVIEW: start/stop and parsing */
+
+func (m *ircModel) startPreviewForServer(id serverID) {
+	s := m.servers[id]
+	if s == nil {
+		return
+	}
+	if s.sseCancels == nil {
+		s.sseCancels = make(map[string]context.CancelFunc)
+	}
+	for _, ch := range s.channels {
+		url, ok := previewFeeds[strings.ToLower(ch)]
+		if !ok {
+			continue
+		}
+		// Already running?
+		if _, exists := s.sseCancels[ch]; exists {
+			continue
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		s.sseCancels[ch] = cancel
+		go m.runSSEPreview(ctx, id, ch, url)
+		// Let the user know this is a preview feed
+		m.push(ircChanLineMsg{
+			id:      id,
+			channel: ch,
+			line:    styleDim.Render("[preview] listening to "+url),
+		})
+	}
+}
+
+func (m *ircModel) stopPreviewForServer(id serverID) {
+	s := m.servers[id]
+	if s == nil || s.sseCancels == nil {
+		return
+	}
+	for ch, cancel := range s.sseCancels {
+		cancel()
+		delete(s.sseCancels, ch)
+	}
+}
+
+func (m *ircModel) runSSEPreview(ctx context.Context, id serverID, ch, url string) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		m.push(ircChanLineMsg{id: id, channel: ch, line: styleDim.Render("[preview] build request failed: " + err.Error())})
+		return
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Cache-Control", "no-cache")
+	client := &http.Client{Timeout: 0}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		m.push(ircChanLineMsg{id: id, channel: ch, line: styleDim.Render("[preview] connect failed: " + err.Error())})
+		return
+	}
+	defer resp.Body.Close()
+
+	sc := bufio.NewScanner(resp.Body)
+	// increase buffer for long name lists
+	buf := make([]byte, 0, 64*1024)
+	sc.Buffer(buf, 1024*1024)
+
+	for sc.Scan() {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		line := sc.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := strings.TrimPrefix(line, "data: ")
+		var items []ssePacket
+		if err := json.Unmarshal([]byte(payload), &items); err != nil {
+			continue
+		}
+		for _, ev := range items {
+			for _, msg := range m.translateSSEToMsgs(id, ch, ev) {
+				m.push(msg)
+			}
+		}
+	}
+	// ignore scanner errors on cancel/close
+}
+
+/* Translate SSE packets into ircChanLineMsg slice */
+func (m *ircModel) translateSSEToMsgs(id serverID, ch string, e ssePacket) []tea.Msg {
+	var out []tea.Msg
+	switch strings.ToUpper(e.Code) {
+	case "PRIVMSG":
+		if len(e.Args) >= 2 {
+			text := e.Args[1]
+			line := stylePink.Render(fmt.Sprintf("[%s] <%s> %s", nowClock(), e.Nick, text))
+			out = append(out, ircChanLineMsg{id: id, channel: ch, line: line})
+		}
+	case "CTCP_ACTION":
+		if len(e.Args) >= 2 {
+			text := e.Args[1]
+			line := styleDim.Render(fmt.Sprintf("[%s] * %s %s", nowClock(), e.Nick, text))
+			out = append(out, ircChanLineMsg{id: id, channel: ch, line: line})
+		}
+	case "JOIN":
+		if len(e.Args) >= 1 {
+			target := e.Args[0]
+			line := styleDim.Render(fmt.Sprintf("[%s] * %s joined %s", nowClock(), e.Nick, target))
+			out = append(out, ircChanLineMsg{id: id, channel: ch, line: line})
+			out = append(out, ircChanLineMsg{id: id, channel: "_sys", line: line})
+		}
+	case "PART":
+		if len(e.Args) >= 1 {
+			target := e.Args[0]
+			line := styleDim.Render(fmt.Sprintf("[%s] * %s left %s", nowClock(), e.Nick, target))
+			out = append(out, ircChanLineMsg{id: id, channel: ch, line: line})
+			out = append(out, ircChanLineMsg{id: id, channel: "_sys", line: line})
+		}
+	case "QUIT":
+		line := styleDim.Render(fmt.Sprintf("[%s] * %s quit", nowClock(), e.Nick))
+		out = append(out, ircChanLineMsg{id: id, channel: "_sys", line: line})
+	default:
+		// Ignore numeric floods like 353 to keep preview readable
+	}
+	return out
+}
+
 /* VIEWS */
 
 func (m *ircModel) View() string {
@@ -1149,7 +1335,7 @@ func (m *ircModel) View() string {
 		lipgloss.NewStyle().MarginTop(1).MarginBottom(1).Render(serversTitle),
 		m.serverList.View(),
 	)
-	leftBox := box.Width(m.leftWidth).Height(m.height-topPadding).Render(leftInner)
+	leftBox := box.Width(m.leftWidth).Height(m.height - topPadding).Render(leftInner)
 
 	var rightInner string
 	switch m.mode {
@@ -1158,11 +1344,11 @@ func (m *ircModel) View() string {
 	case modeChat:
 		rightInner = m.viewChat()
 	}
-	rightBox := box.Width(m.width - m.leftWidth - 4).Height(m.height-topPadding).Render(rightInner)
+	rightBox := box.Width(m.width - m.leftWidth - 4).Height(m.height - topPadding).Render(rightInner)
 
 	spacer := lipgloss.NewStyle().
 		Width(2).
-		Height(m.height-topPadding).
+		Height(m.height - topPadding).
 		Render(" ")
 
 	joined := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox, spacer)
@@ -1253,7 +1439,6 @@ func NewZuseModel() *ZuseModel {
 		m:     initialIRCModel(),
 		msgCh: make(chan tea.Msg, 256),
 	}
-	// set async push first
 	z.m.push = func(msg tea.Msg) {
 		select {
 		case z.msgCh <- msg:
@@ -1261,7 +1446,6 @@ func NewZuseModel() *ZuseModel {
 		}
 	}
 
-	// seed built‑in server/channels
 	z.m.seedRekt()
 
 	return z
