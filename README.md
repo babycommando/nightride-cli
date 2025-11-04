@@ -15,18 +15,13 @@ Built for the command line frontier.
 
 - Press Y to watch the youtube livestreams in ASCII, colored and monochromatic
 ![Demo](assets/ascii.jpg)
-
 <p align="center">
   <img src="assets/ascii1.gif" width="45%"/>
   <img src="assets/ascii2.gif" width="45%"/>
 </p>
 
 - Direct IRC access to Rekt Network via [ZUSE IRC](https://github.com/babycommando/zuse/tree/v1.0)
-
-<!-- Top image -->
 ![Zuse](assets/img1.png)
-
-<!-- Two images side by side -->
 <p align="center">
   <img src="assets/img2.png" alt="ZUSE Screenshot 2" width="45%"/>
   <img src="assets/img3.png" alt="ZUSE Screenshot 3" width="45%"/>
