@@ -36,10 +36,8 @@ Built for the command line frontier.
 
 - Press D to run DOOM
 ![DOOM](assets/doom.png)
-The project includes a .wad freeware version of DOOM. Wad files are the things people use to run DOOM on toasters. WAD, according to the Doom Bible, is an acrostic for "Where's All the Data?". Read more on https://doom.fandom.com/wiki/WAD. Shout out to the [GORE engine](https://github.com/AndreRenaud/gore), which I fixed for Windows compatibility. If someone asks if it runs doom, you just answer "hell yeah".
+The project includes a .wad freeware version of DOOM. Wad files are the things people use to run DOOM on toasters. WAD, according to the Doom Bible, is an acrostic for "Where's All the Data?". Read more on https://doom.fandom.com/wiki/WAD. Shout out to the [GORE engine](https://github.com/AndreRenaud/gore), which I fixed for Windows compatibility. If someone asks if it runs doom, you just answer "hell yeah". `Controls: Enter opens the game, arrows move, comma to shoot, space opens doors. Pressing D again quits doom.`
 
-`Controls: Enter opens the game, arrows move, comma to shoot, space opens doors.`
-Pressing D again quits doom.
 
 ## Quick Installation
 
